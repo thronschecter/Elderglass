@@ -71,11 +71,17 @@ cmake --build --preset vs2022-release
 The first configure clones JUCE (~a few hundred MB) via `FetchContent` —
 it's cached in `build/_deps` afterwards, so only the first run is slow.
 
-The built VST3 is copied automatically (via `COPY_PLUGIN_AFTER_BUILD`) to
-your system's VST3 folder (`%COMMONPROGRAMFILES%\VST3`). The `Standalone`
-format is also built, at
+The built plugin bundle lands at
+`build/VstTemplate_artefacts/Release/VST3/VST Template.vst3`. Auto-copying
+it into the system VST3 folder (`%COMMONPROGRAMFILES%\VST3`) is off by
+default because that folder needs admin rights — either copy it there
+yourself, point your DAW at a custom scan folder (most DAWs let you add
+one in preferences), or set `COPY_PLUGIN_AFTER_BUILD TRUE` in
+`CMakeLists.txt` and build from an elevated (Run as Administrator) shell.
+
+The `Standalone` format is also built, at
 `build/VstTemplate_artefacts/Release/Standalone/VST Template.exe`, which is
-the fastest way to test without opening a DAW.
+the fastest way to test without opening a DAW or admin rights.
 
 ## Before you ship anything
 
