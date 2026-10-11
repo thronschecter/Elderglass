@@ -13,7 +13,9 @@
 //   - Mod: pitch modulation of the wet signal, with its own rate
 //   - Dive/Rise: while held, the DSP clock glides to half (dive) or double
 //     (rise) speed and back on release (see ClockedResampler)
-// Mono in, mono out, at host rate. Latency: ClockedResampler::latencySamples.
+//   - Stereo amount: 0 = the mono pedal (both outputs identical), 1 = the
+//     model's stereo output, with the Mod LFO 90 degrees apart on L/R.
+// Stereo in, stereo out, at host rate. Latency: ClockedResampler::latencySamples.
 //==============================================================================
 struct PedalSettings
 {
@@ -31,6 +33,7 @@ struct PedalSettings
     float timeMs   = 400.0f;
     float timeNorm = 0.5f;
     float tone     = 0.6f;
+    float stereo   = 0.0f;
 };
 
 class PedalCore
@@ -49,9 +52,11 @@ public:
 
         for (auto* s : { &feedbackSmooth, &regenSmooth, &mixSmooth, &xSmooth, &toneSmooth, &modSmooth, &timeNormSmooth })
             s->setTimeMs(40.0f, sampleRate);
+        stereoSmooth.setTimeMs(30.0f, sampleRate);
         clockSmooth.setTimeMs(180.0f, sampleRate);
 
-        modBuffer.allocate(static_cast<int>(sampleRate * 0.05f));
+        modBufferL.allocate(static_cast<int>(sampleRate * 0.05f));
+        modBufferR.allocate(static_cast<int>(sampleRate * 0.05f));
         modLfo.prepare(sampleRate);
 
         enabledRamp = 1.0f / (0.010f * sampleRate);
@@ -63,9 +68,11 @@ public:
     {
         model->reset();
         resampler.reset();
-        modBuffer.clear();
+        modBufferL.clear();
+        modBufferR.clear();
         modLfo.reset();
-        std::fill(std::begin(dryDelay), std::end(dryDelay), 0.0f);
+        for (auto& d : dryDelay)
+            d = {};
         dryIndex = 0;
 
         feedbackSmooth.reset(settings.feedback);
@@ -75,6 +82,7 @@ public:
         toneSmooth.reset(settings.tone);
         modSmooth.reset(settings.mod);
         timeNormSmooth.reset(settings.timeNorm);
+        stereoSmooth.reset(settings.stereo);
         clockSmooth.reset(0.0f);
 
         enabledGain = settings.enabled ? 1.0f : 0.0f;
@@ -89,10 +97,10 @@ public:
         modLfo.setRate(s.modRate);
     }
 
-    float process(float in) noexcept
+    StereoSample process(StereoSample in) noexcept
     {
         // Dry path, delayed to line up with the wet path's resampler latency.
-        const float dry = dryDelay[dryIndex];
+        const StereoSample dry = dryDelay[dryIndex];
         dryDelay[dryIndex] = in;
         dryIndex = (dryIndex + 1) % latencySamples;
 
@@ -110,31 +118,41 @@ public:
         c.tone     = toneSmooth.process(settings.tone);
         c.timeNorm = timeNormSmooth.process(settings.timeNorm);
         c.timeMs   = settings.timeMs;
+        c.stereo   = stereoSmooth.process(settings.stereo);
         model->setControls(c);
         modDepth = modSmooth.process(settings.mod);
+        stereoAmount = c.stereo;
 
         // Dive/Rise: glide the clock in the log domain (musical, symmetric).
         const float targetLog = settings.warpHeld ? (settings.warpRise ? 0.6931472f : -0.6931472f) : 0.0f;
         const double clockRatio = std::exp(static_cast<double>(clockSmooth.process(targetLog)));
 
-        const float engineIn = in * enabledGain * programGain;
-        const float wet = resampler.process(engineIn, clockRatio, [this](float x) { return tickEngine(x); });
+        const float inGain = enabledGain * programGain;
+        const auto wet = resampler.process({ in.l * inGain, in.r * inGain }, clockRatio,
+                                           [this](StereoSample x) { return tickEngine(x); });
 
         const float wetGain = std::sin(0.5f * dsp::pi * mix) * programGain * (settings.trails ? 1.0f : enabledGain);
-        return dry * dryGain + wet * wetGain;
+        return { dry.l * dryGain + wet.l * wetGain, dry.r * dryGain + wet.r * wetGain };
     }
 
 private:
     // Runs at the (variable) engine clock.
-    float tickEngine(float in) noexcept
+    StereoSample tickEngine(StereoSample in) noexcept
     {
-        const float wet = model->tick(in);
+        const auto wet = model->tick(in);
 
-        // Mod: short modulated delay = vibrato on the wet signal.
-        modBuffer.push(wet);
+        // Mod: short modulated delay = vibrato on the wet signal. In stereo
+        // the right side's LFO runs 90 degrees ahead (quadrature), which
+        // turns the vibrato into a gentle stereo movement.
+        modBufferL.push(wet.l);
+        modBufferR.push(wet.r);
+        const float phaseL = modLfo.process();
+        const float phaseR = modLfo.processQuadrature();
         const float depthSamples = modDepth * modDepth * 0.0035f * sampleRate;
-        const float delay = 0.0005f * sampleRate + depthSamples * (0.5f + 0.5f * modLfo.process());
-        return modBuffer.read(delay);
+        const float base = 0.0005f * sampleRate;
+        const float delayL = base + depthSamples * (0.5f + 0.5f * phaseL);
+        const float delayR = base + depthSamples * (0.5f + 0.5f * (phaseL + stereoAmount * (phaseR - phaseL)));
+        return { modBufferL.read(delayL), modBufferR.read(delayR) };
     }
 
     void updateFades() noexcept
@@ -148,7 +166,8 @@ private:
                 // Coming back from a fully stopped (no-trails) state.
                 model->reset();
                 resampler.reset();
-                modBuffer.clear();
+                modBufferL.clear();
+                modBufferR.clear();
                 engineIdle = false;
             }
             enabledGain = std::min(enabledTarget, enabledGain + enabledRamp);
@@ -171,7 +190,8 @@ private:
                 currentProgram = settings.program;
                 model->setProgram(currentProgram);
                 model->reset();
-                modBuffer.clear();
+                modBufferL.clear();
+                modBufferR.clear();
             }
         }
         else if (programGain < 1.0f)
@@ -185,13 +205,14 @@ private:
     float sampleRate = 44100.0f;
 
     ClockedResampler resampler;
-    dsp::OnePole feedbackSmooth, regenSmooth, mixSmooth, xSmooth, toneSmooth, modSmooth, timeNormSmooth, clockSmooth;
+    dsp::OnePole feedbackSmooth, regenSmooth, mixSmooth, xSmooth, toneSmooth, modSmooth, timeNormSmooth, clockSmooth, stereoSmooth;
 
-    dsp::CircularBuffer modBuffer;
+    dsp::CircularBuffer modBufferL, modBufferR;
     dsp::Lfo modLfo;
     float modDepth = 0.0f;
+    float stereoAmount = 0.0f;
 
-    float dryDelay[latencySamples] {};
+    StereoSample dryDelay[latencySamples] {};
     int dryIndex = 0;
 
     int currentProgram = 0;

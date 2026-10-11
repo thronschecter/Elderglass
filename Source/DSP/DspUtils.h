@@ -10,6 +10,12 @@
 // Everything here is mono and runs inside the "clocked" engine domain (see
 // ClockedResampler), so none of it may allocate or lock.
 //==============================================================================
+// One stereo frame.
+struct StereoSample
+{
+    float l = 0.0f, r = 0.0f;
+};
+
 namespace dsp
 {
     constexpr float pi    = 3.14159265358979323846f;
@@ -161,15 +167,19 @@ namespace dsp
         float process() noexcept
         {
             const float v = std::sin(twoPi * phase);
+            quadrature = std::cos(twoPi * phase);
             phase += increment;
             if (phase >= 1.0f)
                 phase -= 1.0f;
             return v;
         }
-        void reset() noexcept { phase = 0.0f; }
+
+        // The value 90 degrees ahead of the last process() result.
+        float processQuadrature() const noexcept { return quadrature; }
+        void reset(float startPhase = 0.0f) noexcept { phase = startPhase; }
 
     private:
-        float sampleRate = 44100.0f, increment = 0.0f, phase = 0.0f;
+        float sampleRate = 44100.0f, increment = 0.0f, phase = 0.0f, quadrature = 1.0f;
     };
 
     // Mono circular buffer with fractional (Hermite) reads, indexed by

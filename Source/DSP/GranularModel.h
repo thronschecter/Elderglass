@@ -21,6 +21,9 @@
 // X = grain size (left long/smooth, right short/choppy). Time = delay time and
 // grain buffer length. Tone = resonant low-pass on the output and feedback
 // loops; the top of its range adds a high-pass into the feedback loops.
+//
+// Stereo: the engine itself is mono (input summed, mono feedback loops);
+// DSP B places its grains across the stereo field (see GrainStage).
 //==============================================================================
 class GranularModel final : public PedalModel
 {
@@ -43,7 +46,8 @@ public:
         grainB.prepare(sampleRate, maxTimeSeconds, maxGrainSeconds, 0x89ABCDEu);
         pathA.prepare(sampleRate);
         pathB.prepare(sampleRate);
-        toneFilter.prepare(sampleRate);
+        toneFilterL.prepare(sampleRate);
+        toneFilterR.prepare(sampleRate);
         setProgram(program);
         reset();
     }
@@ -55,7 +59,8 @@ public:
         grainB.reset();
         pathA.reset();
         pathB.reset();
-        toneFilter.reset();
+        toneFilterL.reset();
+        toneFilterR.reset();
     }
 
     void setProgram(int p) override
@@ -93,7 +98,9 @@ public:
 
         // Tone: synth-style resonant low-pass ~150 Hz .. 18 kHz.
         const float cutoff = 150.0f * std::pow(18000.0f / 150.0f, c.tone);
-        toneFilter.setParams(cutoff, 1.1f);
+        toneFilterL.setParams(cutoff, 1.1f);
+        toneFilterR.setParams(cutoff, 1.1f);
+        grainB.setStereo(c.stereo);
 
         // Top quarter of the range fades a high-pass into the feedback loops.
         const float hp = c.tone > 0.75f ? 20.0f + (c.tone - 0.75f) * 4.0f * 580.0f : 20.0f;
@@ -102,17 +109,26 @@ public:
         pathB.setFilters(fbLowpass, hp);
     }
 
-    float tick(float in) override
+    StereoSample tick(StereoSample in) override
     {
-        const float aIn = in + pathA.get() + pathB.get();
+        const float aIn = 0.5f * (in.l + in.r) + pathA.get() + pathB.get();
 
-        const float aOut = program == 3 ? grainA.process(aIn) : delayA.process(aIn);
-        const float bOut = grainB.process(aOut);
+        float aOut;
+        if (program == 3)
+        {
+            const auto g = grainA.process(aIn);
+            aOut = 0.5f * (g.l + g.r);
+        }
+        else
+        {
+            aOut = delayA.process(aIn);
+        }
+        const auto bOut = grainB.process(aOut);
 
         pathA.process(aOut, feedbackGain);
-        pathB.process(bOut, regenGain);
+        pathB.process(0.5f * (bOut.l + bOut.r), regenGain);
 
-        return toneFilter.lowpass(bOut);
+        return { toneFilterL.lowpass(bOut.l), toneFilterR.lowpass(bOut.r) };
     }
 
 private:
@@ -123,5 +139,5 @@ private:
     DelayStage delayA;
     GrainStage grainA, grainB;
     AnalogFeedbackPath pathA, pathB;
-    dsp::Svf toneFilter;
+    dsp::Svf toneFilterL, toneFilterR;
 };

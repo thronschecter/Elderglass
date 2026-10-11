@@ -7,9 +7,15 @@
 
 //==============================================================================
 // Elderglass: two pedals (reverse + granular) with three routings:
-//   Reverse -> Granular, Granular -> Reverse   (mono sum in, mono out to both sides)
+//   Reverse -> Granular, Granular -> Reverse
+//             mono (like the hardware: mono sum in, same signal on both sides)
+//             or stereo (`stereo` switch: true stereo in, the pedals' stereo
+//             engines; see ReverseModel / GrainStage)
 //   Parallel: each pedal sits in its own channel path; `swap` moves the
 //             pedals between the left and right paths (not just the outputs).
+// `width` is a mid/side control on the output: 0 % mono, 100 % as is, 200 %
+// extra wide. A mono source's dry signal is all mid, so width only moves the
+// effect.
 // Latency is constant across routings (2 x the pedal latency), so switching
 // routing never shifts the plugin in time.
 //==============================================================================
@@ -58,13 +64,17 @@ private:
     std::atomic<float>* routingParam = nullptr;
     std::atomic<float>* swapParam    = nullptr;
     std::atomic<float>* outputParam  = nullptr;
+    std::atomic<float>* stereoParam  = nullptr;
+    std::atomic<float>* widthParam   = nullptr;
 
     // Routing changes: fade out, switch, fade in.
     int activeRouting = 0;
     float routingGain = 1.0f, routingRamp = 0.001f;
     // Swap crossfade position: 0 = reverse left / granular right, 1 = swapped.
     float swapPosition = 0.0f, swapRamp = 0.001f;
-    juce::SmoothedValue<float> outputGain;
+    juce::SmoothedValue<float> outputGain, width;
+    // Series stereo blend of the inputs: 0 = mono sum to both, 1 = L/R.
+    float stereoPosition = 0.0f, stereoRamp = 0.001f;
 
     // Extra delay so parallel mode matches the two-pedal latency of series mode.
     float parallelDelay[2][pedalLatency] {};

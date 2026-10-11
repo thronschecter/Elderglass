@@ -12,6 +12,7 @@
 //   host samples --(Hermite)--> engine ticks at `clockRatio` per host sample
 //                --engine-->     engine outputs --(Hermite)--> host samples
 //
+// Stereo: both channels share one clock, so they stay sample-locked.
 // At clockRatio == 1 every interpolation lands exactly on a sample, so the
 // path is bit-transparent apart from a fixed latency of `latencySamples`.
 // clockRatio must stay within [0.5, 2].
@@ -23,7 +24,8 @@ public:
 
     void reset() noexcept
     {
-        std::fill(std::begin(input), std::end(input), 0.0f);
+        for (auto& i : input)
+            i = {};
         for (auto& o : outputs)
             o = {};
         outCount = 0;
@@ -31,8 +33,9 @@ public:
         nextTickRel = -1.0;
     }
 
+    // engineTick: StereoSample(StereoSample in), called once per engine tick.
     template <typename EngineTick>
-    float process(float x, double clockRatio, EngineTick&& engineTick) noexcept
+    StereoSample process(StereoSample x, double clockRatio, EngineTick&& engineTick) noexcept
     {
         // Input history: input[3] = x[n], input[0] = x[n-3].
         input[0] = input[1];
@@ -48,7 +51,10 @@ public:
         while (nextTickRel < -1.0)
         {
             const float frac = static_cast<float>(nextTickRel + 2.0);
-            const float in   = dsp::hermite(input[0], input[1], input[2], input[3], frac);
+            const StereoSample in {
+                dsp::hermite(input[0].l, input[1].l, input[2].l, input[3].l, frac),
+                dsp::hermite(input[0].r, input[1].r, input[2].r, input[3].r, frac)
+            };
             pushOutput(static_cast<double>(hostTime) + nextTickRel, engineTick(in));
             nextTickRel += step;
         }
@@ -62,10 +68,10 @@ private:
     struct Sample
     {
         double time = 0.0;
-        float  value = 0.0f;
+        StereoSample value;
     };
 
-    void pushOutput(double time, float value) noexcept
+    void pushOutput(double time, StereoSample value) noexcept
     {
         outputs[outCount % historySize] = { time, value };
         ++outCount;
@@ -73,10 +79,10 @@ private:
 
     const Sample& outAt(int64_t index) const noexcept { return outputs[index % historySize]; }
 
-    float readOutput(double target) const noexcept
+    StereoSample readOutput(double target) const noexcept
     {
         if (outCount < 4)
-            return 0.0f;
+            return {};
 
         // Newest-first search for the pair bracketing the target time.
         for (int64_t k = outCount - 3; k >= std::max<int64_t>(1, outCount - historySize + 1); --k)
@@ -84,15 +90,18 @@ private:
             const auto& a = outAt(k);
             if (a.time <= target)
             {
-                const auto& b = outAt(k + 1);
-                const float t = static_cast<float>((target - a.time) / std::max(1.0e-9, b.time - a.time));
-                return dsp::hermite(outAt(k - 1).value, a.value, b.value, outAt(k + 2).value, std::clamp(t, 0.0f, 1.0f));
+                const auto& b  = outAt(k + 1);
+                const auto& a0 = outAt(k - 1);
+                const auto& b1 = outAt(k + 2);
+                const float t = std::clamp(static_cast<float>((target - a.time) / std::max(1.0e-9, b.time - a.time)), 0.0f, 1.0f);
+                return { dsp::hermite(a0.value.l, a.value.l, b.value.l, b1.value.l, t),
+                         dsp::hermite(a0.value.r, a.value.r, b.value.r, b1.value.r, t) };
             }
         }
-        return 0.0f;
+        return {};
     }
 
-    float input[4] {};
+    StereoSample input[4] {};
     Sample outputs[historySize] {};
     int64_t outCount = 0;
     int64_t hostTime = 0;

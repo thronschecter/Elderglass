@@ -15,10 +15,13 @@ class FdnReverb
 public:
     static constexpr int numLines = 8;
 
-    void prepare(float newSampleRate, float maxSizeIn, uint32_t seed)
+    // variant 1 uses a partly different output tap set (and different LFO phases
+    // via the seed), giving a decorrelated twin for the other stereo side.
+    void prepare(float newSampleRate, float maxSizeIn, uint32_t seed, int variant = 0)
     {
         sampleRate = newSampleRate;
         maxSize = maxSizeIn;
+        outputSigns = variant == 0 ? outputSignsA : outputSignsB;
 
         for (int i = 0; i < numLines; ++i)
         {
@@ -117,7 +120,11 @@ private:
     static constexpr float lineMs[numLines]       = { 31.3f, 37.9f, 43.1f, 47.5f, 53.7f, 61.1f, 67.9f, 79.3f };
     static constexpr float diffuserMs[numDiffusers] = { 3.13f, 4.77f, 7.41f, 11.27f, 16.93f, 23.71f };
     static constexpr float inputSigns[numLines]   = { 1, -1, 1, -1, 1, 1, -1, -1 };
-    static constexpr float outputSigns[numLines]  = { 1, 1, -1, -1, 1, -1, 1, -1 };
+    static constexpr float outputSignsA[numLines] = { 1, 1, -1, -1, 1, -1, 1, -1 };
+    // Twin taps: half the signs flipped vs A (expected correlation +0.5), so
+    // the two sides differ but never lean towards cancelling in mono.
+    static constexpr float outputSignsB[numLines] = { 1, 1, -1, 1, 1, -1, -1, -1 };
+    const float* outputSigns = outputSignsA;
 
     void updateGains(float s) noexcept
     {

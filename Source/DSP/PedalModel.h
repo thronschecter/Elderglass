@@ -14,12 +14,14 @@ struct ModelControls
     float timeMs   = 400.0f;
     float timeNorm = 0.5f; // Time knob position, for programs where Time is not a delay time
     float tone     = 0.5f;
+    float stereo   = 0.0f; // 0 = mono pedal (outputs identical), 1 = full stereo
 };
 
 //==============================================================================
 // One of the two pedals' algorithm sets (the "DSP A -> DSP B" pair plus the
 // two analog feedback paths and the tone shaping). Runs per engine-clock
-// tick, mono, and returns the wet signal.
+// tick and returns the wet signal. Stereo in, stereo out; with
+// ModelControls::stereo == 0 the outputs must be identical (the mono pedal).
 //==============================================================================
 class PedalModel
 {
@@ -30,7 +32,7 @@ public:
     virtual void reset() = 0;
     virtual void setProgram(int programIndex) = 0; // 0..4
     virtual void setControls(const ModelControls&) = 0;
-    virtual float tick(float in) = 0;
+    virtual StereoSample tick(StereoSample in) = 0;
 };
 
 //==============================================================================

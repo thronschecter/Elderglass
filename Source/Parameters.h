@@ -35,6 +35,8 @@ namespace IDs
 
     static const juce::ParameterID routing { "routing", 1 };
     static const juce::ParameterID swap    { "swap",    1 };
+    static const juce::ParameterID stereo  { "stereo",  1 };
+    static const juce::ParameterID width   { "width",   1 };
     static const juce::ParameterID output  { "output",  1 };
 
     inline juce::ParameterID pedal(const juce::String& prefix, const char* name)

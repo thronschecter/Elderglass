@@ -21,8 +21,11 @@
 // back into DSP A like on the granular pedal.
 // Tone: band-pass in programs 1 and 5 (output and loops), reverb low-pass in
 // 2-4, plus harmonic distortion in 3.
+//
+// ReverseChannel is one mono pedal. ReverseModel (below) runs two of them
+// for stereo; the right one is a decorrelated twin (variant 1).
 //==============================================================================
-class ReverseModel final : public PedalModel
+class ReverseChannel
 {
 public:
     static constexpr float maxTimeSeconds = 2.0f;
@@ -31,15 +34,29 @@ public:
     static constexpr float maxFeedbackGain = 0.8f;
     static constexpr float maxRegenGain    = 0.8f;
 
-    void prepare(float newSampleRate) override
+    // Variant 1 is the stereo twin: delays 2.5 % longer, reverbs with other
+    // modulation phases and output taps, pitch shifters out of step.
+    // Call before prepare().
+    void setVariant(int v) noexcept
+    {
+        variant = v;
+        timeScale = v == 0 ? 1.0f : 1.025f;
+    }
+
+    void prepare(float newSampleRate)
     {
         sampleRate = newSampleRate;
         delayA.prepare(sampleRate, maxTimeSeconds);
         delayB.prepare(sampleRate, maxTimeSeconds);
         windowA.prepare(sampleRate, maxTimeSeconds);
         windowB.prepare(sampleRate, maxTimeSeconds);
-        reverbA.prepare(sampleRate, 2.5f, 0x51u);
-        reverbB.prepare(sampleRate, 2.5f, 0xA7u);
+        reverbA.prepare(sampleRate, 2.5f, 0x51u + 0x1000u * static_cast<uint32_t>(variant), variant);
+        reverbB.prepare(sampleRate, 2.5f, 0xA7u + 0x1000u * static_cast<uint32_t>(variant), variant);
+        const float shifterPhase = variant == 0 ? 0.0f : 0.37f;
+        shiftA.setStartPhase(shifterPhase);
+        shiftB.setStartPhase(shifterPhase);
+        pitchA.setStartPhase(shifterPhase);
+        pitchB.setStartPhase(shifterPhase);
         // Long windows in the reverb loops: the crossfade wobble is slow and
         // the reverb smears it. Short ones for the articulate pitch delays.
         shiftA.prepare(sampleRate, 0.15f);
@@ -56,7 +73,7 @@ public:
         reset();
     }
 
-    void reset() override
+    void reset()
     {
         delayA.reset();
         delayB.reset();
@@ -74,9 +91,10 @@ public:
         toneHighpass.reset();
     }
 
-    void setProgram(int p) override
+    void setProgram(int p)
     {
         program = std::clamp(p, 0, 4);
+        programTrim = std::pow(10.0f, programTrimDb[program] / 20.0f);
         delayA.setMode(program == 4 ? DelayStage::Mode::Forward : DelayStage::Mode::Reverse);
         delayA.setReverseAmount(1.0f);
         delayB.setMode(DelayStage::Mode::Forward);
@@ -90,12 +108,12 @@ public:
         }
     }
 
-    void setControls(const ModelControls& c) override
+    void setControls(const ModelControls& c)
     {
         feedbackGain = c.feedback * maxFeedbackGain;
         regenGain    = c.regen * maxRegenGain;
 
-        const float timeSamples = c.timeMs * 0.001f * sampleRate;
+        const float timeSamples = std::min(c.timeMs * timeScale, maxTimeSeconds * 1000.0f) * 0.001f * sampleRate;
         const float decay = 0.8f * std::pow(25.0f, c.x); // X as decay: 0.8 s .. 20 s
 
         // Tone curves.
@@ -149,8 +167,10 @@ public:
 
                 // X picks the order of the intervals: DSP A shifts up by the
                 // first one, DSP B down by the second.
-                static constexpr int orders[6][2] = { { 5, 7 }, { 5, 12 }, { 7, 5 }, { 7, 12 }, { 12, 5 }, { 12, 7 } };
-                const auto& o = orders[std::min(5, static_cast<int>(c.x * 6.0f))];
+                // The last position (far right) is octave up / octave down.
+                static constexpr int numOrders = 7;
+                static constexpr int orders[numOrders][2] = { { 5, 7 }, { 5, 12 }, { 7, 5 }, { 7, 12 }, { 12, 5 }, { 12, 7 }, { 12, 12 } };
+                const auto& o = orders[std::min(numOrders - 1, static_cast<int>(c.x * numOrders))];
                 pitchA.setRatio(std::exp2(static_cast<float>(o[0]) / 12.0f));
                 pitchB.setRatio(std::exp2(static_cast<float>(-o[1]) / 12.0f));
                 setBand(bandLow, bandHigh);
@@ -159,7 +179,17 @@ public:
         }
     }
 
-    float tick(float in) override
+    float tick(float in) { return programTrim * tickProgram(in); }
+
+private:
+    // Output trim per program, so all five sit at about the same wet level
+    // as the granular pedal (measured with Tests/ReverbAnalysis.cpp at
+    // default knobs): P1 loses level in its band-pass and the
+    // forward/reverse blend, P2's shimmer loop builds up, P5 loses level in
+    // its band-pass and pitch crossfades.
+    static constexpr float programTrimDb[5] = { 8.0f, -7.0f, 0.0f, -1.0f, 5.5f };
+
+    float tickProgram(float in)
     {
         switch (program)
         {
@@ -229,6 +259,9 @@ private:
 
     float sampleRate = 44100.0f;
     int program = 0;
+    int variant = 0;
+    float timeScale = 1.0f;
+    float programTrim = 1.0f;
     float feedbackGain = 0.0f, regenGain = 0.0f;
 
     DelayStage delayA, delayB, windowA, windowB;
@@ -237,4 +270,52 @@ private:
     PitchShifter pitchA, pitchB; // pitch delays (program 5)
     AnalogFeedbackPath pathA, pathB;
     dsp::Svf toneLowpass, toneHighpass;
+};
+
+//==============================================================================
+// The reverse pedal as a stereo model: two ReverseChannels, true stereo (each
+// side processes its own input). With stereo 0 the left channel feeds both
+// outputs, i.e. exactly the mono pedal. The right channel always runs, so its
+// tails are already there when stereo is switched on.
+//==============================================================================
+class ReverseModel final : public PedalModel
+{
+public:
+    ReverseModel() { right.setVariant(1); }
+
+    void prepare(float sampleRate) override
+    {
+        left.prepare(sampleRate);
+        right.prepare(sampleRate);
+    }
+
+    void reset() override
+    {
+        left.reset();
+        right.reset();
+    }
+
+    void setProgram(int p) override
+    {
+        left.setProgram(p);
+        right.setProgram(p);
+    }
+
+    void setControls(const ModelControls& c) override
+    {
+        left.setControls(c);
+        right.setControls(c);
+        stereo = c.stereo;
+    }
+
+    StereoSample tick(StereoSample in) override
+    {
+        const float l = left.tick(in.l);
+        const float r = right.tick(in.r);
+        return { l, l + stereo * (r - l) };
+    }
+
+private:
+    ReverseChannel left, right;
+    float stereo = 0.0f;
 };

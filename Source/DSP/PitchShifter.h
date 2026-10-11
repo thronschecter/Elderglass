@@ -22,8 +22,11 @@ public:
     void reset()
     {
         buffer.clear();
-        phase = 0.0f;
+        phase = startPhase;
     }
+
+    // Offsets the crossfade cycle, so a stereo twin wobbles out of step.
+    void setStartPhase(float p) noexcept { startPhase = p - std::floor(p); }
 
     // 2 = octave up, 0.5 = octave down. Valid range 0.25..4.
     void setRatio(float r) noexcept { ratio = r; }
@@ -50,4 +53,5 @@ private:
     float window = 2048.0f;
     float ratio = 1.0f;
     float phase = 0.0f;
+    float startPhase = 0.0f;
 };

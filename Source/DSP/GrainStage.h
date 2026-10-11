@@ -12,6 +12,12 @@
 //   MultiTap   - several taps, each slowly scanning through the buffer
 //                (granular time-stretch); `stretch` sets how slowly the scan
 //                moves and how far apart the taps sit. Reads like a reverb.
+//
+// Stereo: every grain gets a position in the stereo field when it is born,
+// semi-randomly: sides mostly alternate (L, R, L, ...) so the cloud stays
+// balanced, with a random distance from the centre. The position is scaled
+// by the current stereo amount while the grain plays, so at 0 both outputs
+// are identical and switching is immediate.
 //==============================================================================
 class GrainStage
 {
@@ -44,8 +50,10 @@ public:
     void setGrainSamples(float s) noexcept { grainSamples = std::max(s, 32.0f); }
     // 0..1, only used by MultiTap: 0 = small/tight space, 1 = maximally stretched.
     void setStretch(float s) noexcept { stretch = std::clamp(s, 0.0f, 1.0f); }
+    // 0 = all grains centred (identical outputs), 1 = full grain spread.
+    void setStereo(float s) noexcept { stereo = std::clamp(s, 0.0f, 1.0f); }
 
-    float process(float x) noexcept
+    StereoSample process(float x) noexcept
     {
         buffer.push(x);
 
@@ -54,7 +62,7 @@ public:
         else
             scheduleSingle();
 
-        float out = 0.0f;
+        StereoSample out;
         for (auto& g : grains)
         {
             if (! g.active)
@@ -62,13 +70,15 @@ public:
 
             const float phase = g.age / g.length;
             const float samplesAgo = g.startAgo + g.age * (1.0f - g.speed);
-            out += buffer.read(samplesAgo) * dsp::hann(phase) * g.gain;
+            const float v = buffer.read(samplesAgo) * dsp::hann(phase) * g.gain;
+            out.l += v * (1.0f + stereo * (g.panL - 1.0f));
+            out.r += v * (1.0f + stereo * (g.panR - 1.0f));
 
             g.age += 1.0f;
             if (g.age >= g.length)
                 g.active = false;
         }
-        return out * makeupGain;
+        return { out.l * makeupGain, out.r * makeupGain };
     }
 
 private:
@@ -84,6 +94,8 @@ private:
         float length   = 1.0f; // samples
         float age      = 0.0f;
         float gain     = 1.0f;
+        float panL     = 1.0f; // gains at full spread; 1/1 = centre
+        float panR     = 1.0f;
     };
 
     struct Tap
@@ -167,7 +179,16 @@ private:
         {
             if (g.active)
                 continue;
-            g = { true, ago, speed, length, 0.0f, gain };
+
+            // Semi-random placement: usually the opposite side of the last
+            // grain, sometimes a random side; random distance from centre.
+            side = rng.nextFloat() < 0.8f ? -side : (rng.nextFloat() < 0.5f ? -1.0f : 1.0f);
+            const float position = side * (0.25f + 0.75f * rng.nextFloat()); // -1 = left, 1 = right
+
+            // Constant-power pan, normalised so the centre is unity on both sides.
+            const float theta = 0.25f * dsp::pi * (1.0f + position);
+            g = { true, ago, speed, length, 0.0f, gain,
+                  1.41421356f * std::cos(theta), 1.41421356f * std::sin(theta) };
             return;
         }
     }
@@ -177,6 +198,8 @@ private:
     float bufferSamples = 22050.0f;
     float grainSamples  = 4410.0f;
     float stretch = 0.5f;
+    float stereo = 0.0f;
+    float side = 1.0f;
 
     dsp::CircularBuffer buffer;
     dsp::Random rng;

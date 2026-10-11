@@ -17,6 +17,8 @@ ElderglassAudioProcessor::ElderglassAudioProcessor()
     routingParam = parameters.getRawParameterValue(IDs::routing.getParamID());
     swapParam    = parameters.getRawParameterValue(IDs::swap.getParamID());
     outputParam  = parameters.getRawParameterValue(IDs::output.getParamID());
+    stereoParam  = parameters.getRawParameterValue(IDs::stereo.getParamID());
+    widthParam   = parameters.getRawParameterValue(IDs::width.getParamID());
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout ElderglassAudioProcessor::createParameterLayout()
@@ -27,6 +29,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout ElderglassAudioProcessor::cr
         IDs::routing, "Routing",
         juce::StringArray{ "Reverse > Granular", "Granular > Reverse", "Parallel" }, 0));
     layout.add(std::make_unique<juce::AudioParameterBool>(IDs::swap, "Parallel Swap", false));
+    layout.add(std::make_unique<juce::AudioParameterBool>(IDs::stereo, "Series Stereo", false));
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        IDs::width, "Stereo Width",
+        juce::NormalisableRange<float>(0.0f, 200.0f, 0.1f), 100.0f,
+        juce::AudioParameterFloatAttributes().withLabel("%")
+            .withStringFromValueFunction([](float v, int) { return juce::String(juce::roundToInt(v)); })));
     layout.add(std::make_unique<juce::AudioParameterFloat>(
         IDs::output, "Output",
         juce::NormalisableRange<float>(-24.0f, 12.0f, 0.1f), 0.0f,
@@ -58,6 +66,10 @@ void ElderglassAudioProcessor::prepareToPlay(double sampleRate, int)
 
     outputGain.reset(sampleRate, 0.05);
     outputGain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(outputParam->load()));
+    width.reset(sampleRate, 0.05);
+    width.setCurrentAndTargetValue(widthParam->load() * 0.01f);
+    stereoPosition = stereoParam->load() > 0.5f ? 1.0f : 0.0f;
+    stereoRamp = static_cast<float>(1.0 / (0.030 * sampleRate));
 
     for (auto& ch : parallelDelay)
         std::fill(std::begin(ch), std::end(ch), 0.0f);
@@ -93,10 +105,18 @@ void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
             if (auto b = pos->getBpm())
                 bpm = *b;
 
-    reversePedal.setSettings(reverseParams.read(bpm));
-    granularPedal.setSettings(granularParams.read(bpm));
-
     const int requestedRouting = juce::roundToInt(routingParam->load());
+    const bool seriesStereo = stereoParam->load() > 0.5f;
+    const float stereoTarget = seriesStereo && activeRouting != static_cast<int>(Routing::Parallel) ? 1.0f : 0.0f;
+
+    // The pedals' own stereo engines only run in series stereo; in parallel
+    // each pedal is a mono pedal in its own path.
+    auto reverseSettings = reverseParams.read(bpm);
+    auto granularSettings = granularParams.read(bpm);
+    reverseSettings.stereo = granularSettings.stereo = stereoTarget;
+    reversePedal.setSettings(reverseSettings);
+    granularPedal.setSettings(granularSettings);
+    width.setTargetValue(widthParam->load() * 0.01f);
     const float swapTarget = swapParam->load() > 0.5f ? 1.0f : 0.0f;
     outputGain.setTargetValue(juce::Decibels::decibelsToGain(outputParam->load()));
 
@@ -131,6 +151,11 @@ void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         else if (swapPosition > swapTarget)
             swapPosition = std::max(swapTarget, swapPosition - swapRamp);
 
+        if (stereoPosition < stereoTarget)
+            stereoPosition = std::min(stereoTarget, stereoPosition + stereoRamp);
+        else if (stereoPosition > stereoTarget)
+            stereoPosition = std::max(stereoTarget, stereoPosition - stereoRamp);
+
         const float l = inL[i];
         const float r = inR[i];
         float yl = 0.0f, yr = 0.0f;
@@ -141,8 +166,10 @@ void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
             // crossfade each pedal is fed a blend of both inputs and its
             // output is panned between both outputs, so nothing clicks.
             const float g = swapPosition;
-            const float rev  = reversePedal.process((1.0f - g) * l + g * r);
-            const float gran = granularPedal.process((1.0f - g) * r + g * l);
+            const float revIn  = (1.0f - g) * l + g * r;
+            const float granIn = (1.0f - g) * r + g * l;
+            const float rev  = reversePedal.process({ revIn, revIn }).l;
+            const float gran = granularPedal.process({ granIn, granIn }).l;
             const float pl = (1.0f - g) * rev + g * gran;
             const float pr = (1.0f - g) * gran + g * rev;
 
@@ -154,17 +181,26 @@ void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         }
         else
         {
+            // Mono: both sides get the mono sum (the hardware). Stereo: L/R.
             const float mono = 0.5f * (l + r);
-            const float y = activeRouting == static_cast<int>(Routing::ReverseIntoGranular)
-                                ? granularPedal.process(reversePedal.process(mono))
-                                : reversePedal.process(granularPedal.process(mono));
-            yl = yr = y;
+            const StereoSample in { mono + stereoPosition * (l - mono), mono + stereoPosition * (r - mono) };
+            const auto y = activeRouting == static_cast<int>(Routing::ReverseIntoGranular)
+                               ? granularPedal.process(reversePedal.process(in))
+                               : reversePedal.process(granularPedal.process(in));
+            yl = y.l;
+            yr = y.r;
 
             // Keep the padding line flowing so a switch back is clean.
             parallelDelay[0][parallelDelayIndex] = 0.0f;
             parallelDelay[1][parallelDelayIndex] = 0.0f;
         }
         parallelDelayIndex = (parallelDelayIndex + 1) % pedalLatency;
+
+        // Width (mid/side).
+        const float mid  = 0.5f * (yl + yr);
+        const float side = 0.5f * (yl - yr) * width.getNextValue();
+        yl = mid + side;
+        yr = mid - side;
 
         const float gain = routingGain * outputGain.getNextValue();
         if (outR != nullptr)

@@ -11,6 +11,16 @@ The two pedals can be routed **Reverse → Granular**, **Granular → Reverse**,
 in **Parallel**. In parallel, each pedal sits in its own channel path, and
 **Swap** moves the pedals between the left and right paths.
 
+The series routings can run in **Mono** (like the hardware) or **Stereo**:
+- Reverse pedal: a left and a right engine, the right one a decorrelated twin
+  (slightly longer delays, different reverb taps and modulation phases).
+- Granular pedal: one engine whose grains are placed semi-randomly across the
+  stereo field (alternating sides, random distance from the centre).
+- Mod runs 90 degrees apart on left and right.
+
+**Width** (mid/side, 0-200 %) sets the stereo width of the output in every
+routing.
+
 Research notes are in [Docs/](Docs/).
 
 ## Download / install

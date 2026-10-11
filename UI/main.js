@@ -38,7 +38,7 @@ const PEDALS = [
                 "Reverb decay, from 0.8 s (left) to 20 s (right).",
                 "Reverb decay, from 0.8 s (left) to 20 s (right).",
                 "Decay of the forward reverb, from 0.8 s (left) to 20 s (right).",
-                "Interval order: which of 4th / 5th / octave the first delay shifts up (↑) and the second shifts down (↓).",
+                "Interval order: which of 4th / 5th / octave the first delay shifts up (↑) and the second shifts down (↓). Far right: octave up and octave down.",
             ],
             time: [
                 "Delay time. Also sets the length of the reverse-reverb swell.",
@@ -170,6 +170,7 @@ function formatValue(paramId, v) {
     if (paramId.endsWith("time")) return v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${Math.round(v)} ms`;
     if (paramId.endsWith("modRate")) return `${v.toFixed(2)} Hz`;
     if (paramId === "output") return `${v >= 0 ? "+" : ""}${v.toFixed(1)} dB`;
+    if (paramId === "width") return `${Math.round(v)}%`;
     return `${Math.round(v)}%`;
 }
 
@@ -240,6 +241,40 @@ function createKnob(el, paramId, { format } = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Tap footswitch: a short press is a tap (reported on release, with the time
+// since the press so the tempo uses the press moment); holding it longer
+// than HOLD_MS is Dive/Rise for as long as it is held.
+// ---------------------------------------------------------------------------
+function bindTapSwitch(button, { onTap, onHold }) {
+    let pressedAt = 0;
+    let holdTimer = null;
+    let holding = false;
+    button.addEventListener("pointerdown", (e) => {
+        button.setPointerCapture(e.pointerId);
+        button.classList.add("is-down");
+        pressedAt = performance.now();
+        holding = false;
+        holdTimer = setTimeout(() => {
+            holding = true;
+            onHold(true);
+        }, HOLD_MS);
+    });
+    const release = () => {
+        if (!button.classList.contains("is-down")) return;
+        button.classList.remove("is-down");
+        clearTimeout(holdTimer);
+        if (holding) onHold(false);
+        else onTap(performance.now() - pressedAt);
+        holding = false;
+    };
+    button.addEventListener("pointerup", release);
+    button.addEventListener("pointercancel", release);
+}
+
+// Per-pedal state the shared footswitch needs (filled by buildPedal).
+const pedalControls = {};
+
+// ---------------------------------------------------------------------------
 // Small binders
 // ---------------------------------------------------------------------------
 function bindToggle(button, paramId, onChange) {
@@ -305,8 +340,8 @@ function buildPedal(def) {
     const xText = (v) => {
         // Matches the interval orders in ReverseModel.h (program V).
         if (def.prefix !== "rev_" || program !== 4) return formatValue("x", v);
-        const orders = [["4th", "5th"], ["4th", "oct"], ["5th", "4th"], ["5th", "oct"], ["oct", "4th"], ["oct", "5th"]];
-        const [up, down] = orders[Math.min(5, Math.floor((v / 100) * 6))];
+        const orders = [["4th", "5th"], ["4th", "oct"], ["5th", "4th"], ["5th", "oct"], ["oct", "4th"], ["oct", "5th"], ["oct", "oct"]];
+        const [up, down] = orders[Math.min(orders.length - 1, Math.floor((v / 100) * orders.length))];
         return `↑${up} ↓${down}`;
     };
 
@@ -363,31 +398,12 @@ function buildPedal(def) {
     refreshEnabled();
 
     // Tap footswitch: short press = tap tempo, hold = Dive/Rise while held.
-    const tapButton = panel.querySelector('[data-stomp="tap"]');
     const warpState = getToggleState(p("warp"));
-    let pressedAt = 0;
-    let holdTimer = null;
-    let holding = false;
-    tapButton.addEventListener("pointerdown", (e) => {
-        tapButton.setPointerCapture(e.pointerId);
-        tapButton.classList.add("is-down");
-        pressedAt = performance.now();
-        holding = false;
-        holdTimer = setTimeout(() => {
-            holding = true;
-            warpState.setValue(true);
-        }, HOLD_MS);
+    bindTapSwitch(panel.querySelector('[data-stomp="tap"]'), {
+        onTap: (pressAgeMs) => tapNative(def.prefix, pressAgeMs),
+        onHold: (held) => warpState.setValue(held),
     });
-    const release = () => {
-        if (!tapButton.classList.contains("is-down")) return;
-        tapButton.classList.remove("is-down");
-        clearTimeout(holdTimer);
-        if (holding) warpState.setValue(false);
-        else tapNative(def.prefix, performance.now() - pressedAt);
-        holding = false;
-    };
-    tapButton.addEventListener("pointerup", release);
-    tapButton.addEventListener("pointercancel", release);
+    pedalControls[def.prefix] = { warpState, timeState: knobs.time.state, isSynced: () => synced };
 
     // Tap LED blinks at the Time knob's rate (steady while synced: the host
     // tempo isn't visible to the page).
@@ -396,7 +412,8 @@ function buildPedal(def) {
     const blink = () => {
         const periodMs = knobs.time.state.getScaledValue();
         const phase = ((performance.now() - blinkStart) % periodMs) / periodMs;
-        tapLed.classList.toggle("is-on", synced || holding || phase < 0.18);
+        // Lit while Dive/Rise is held, from this footswitch or the shared one.
+        tapLed.classList.toggle("is-on", synced || warpState.getValue() || phase < 0.18);
         requestAnimationFrame(blink);
     };
     requestAnimationFrame(blink);
@@ -405,12 +422,47 @@ function buildPedal(def) {
 PEDALS.forEach(buildPedal);
 
 // ---------------------------------------------------------------------------
+// Shared footswitch: taps both pedals' tempo, holds Dive/Rise on both (each
+// in its own Dive/Rise direction).
+// ---------------------------------------------------------------------------
+const masterTap = document.getElementById("masterTap");
+const masterLed = document.getElementById("masterTapLed");
+let masterHeld = false;
+bindTapSwitch(masterTap, {
+    onTap: (pressAgeMs) => PEDALS.forEach((def) => tapNative(def.prefix, pressAgeMs)),
+    onHold: (held) => {
+        masterHeld = held;
+        Object.values(pedalControls).forEach((c) => c.warpState.setValue(held));
+    },
+});
+// Blinks at the tempo while both pedals share it (e.g. after tapping here).
+let masterBlinkStart = performance.now();
+Object.values(pedalControls).forEach((c) =>
+    c.timeState.valueChangedEvent.addListener(() => (masterBlinkStart = performance.now())));
+const masterBlink = () => {
+    const controls = Object.values(pedalControls);
+    const times = controls.map((c) => c.timeState.getScaledValue());
+    const shared = controls.every((c) => !c.isSynced()) && Math.abs(times[0] - times[1]) < 1.5;
+    const phase = ((performance.now() - masterBlinkStart) % times[0]) / times[0];
+    masterLed.classList.toggle("is-on", masterHeld || (shared && phase < 0.18));
+    requestAnimationFrame(masterBlink);
+};
+requestAnimationFrame(masterBlink);
+attachTooltip(masterTap, () => ({
+    title: "tap · hold both",
+    text: "Tap: sets the tempo of both pedals. Hold: Dive/Rise on both pedals, each in its own direction. "
+        + "The LED blinks while both pedals share the same time.",
+}));
+
+// ---------------------------------------------------------------------------
 // Routing: the panels are laid out in signal order. Series shows the first
 // pedal on the left; parallel shows the pedal in the left path on the left.
 // ---------------------------------------------------------------------------
 const routingState = getComboBoxState("routing");
 const swapState = getToggleState("swap");
 const swapButton = document.getElementById("swapButton");
+const stereoState = getToggleState("stereo");
+const stereoButton = document.getElementById("stereoButton");
 const flow = document.getElementById("routingFlow");
 const routingButtons = [...document.querySelectorAll("#routingButtons button")];
 
@@ -420,6 +472,11 @@ function refreshRouting() {
     routingButtons.forEach((b) => b.setAttribute("aria-pressed", String(parseInt(b.dataset.routing, 10) === routing)));
     swapButton.setAttribute("aria-pressed", String(swapped));
     swapButton.disabled = routing !== 2;
+    // Series stereo only applies to the series routings; parallel is stereo
+    // by design (one pedal per side).
+    stereoButton.setAttribute("aria-pressed", String(stereoState.getValue()));
+    stereoButton.disabled = routing === 2;
+    stereoButton.textContent = stereoState.getValue() ? "Stereo" : "Mono";
 
     const granFirst = routing === 1 || (routing === 2 && swapped);
     panels["rev_"].style.order = granFirst ? 3 : 1;
@@ -438,8 +495,24 @@ swapButton.addEventListener("click", () => swapState.setValue(!swapState.getValu
 routingState.valueChangedEvent.addListener(refreshRouting);
 routingState.propertiesChangedEvent.addListener(refreshRouting);
 swapState.valueChangedEvent.addListener(refreshRouting);
+stereoButton.addEventListener("click", () => stereoState.setValue(!stereoState.getValue()));
+stereoState.valueChangedEvent.addListener(refreshRouting);
 refreshRouting();
 
 const outputKnob = document.querySelector('[data-param="output"]');
 createKnob(outputKnob, "output");
 attachTooltip(outputKnob, () => ({ title: "Output", text: "Overall output level of the plugin." }));
+
+const widthKnob = document.querySelector('[data-param="width"]');
+createKnob(widthKnob, "width");
+attachTooltip(widthKnob, () => ({
+    title: "Width",
+    text: "Stereo width of the output (mid/side): 0 % mono, 100 % natural, 200 % extra wide. "
+        + "With a mono guitar only the effect gets wider; the dry signal stays centred.",
+}));
+attachTooltip(stereoButton, () => ({
+    title: "Stereo",
+    text: routingState.getChoiceIndex() === 2
+        ? "Parallel is always stereo: one pedal per side."
+        : "Mono: like the hardware. Stereo: the reverse pedal runs a left and a right engine, the granular pedal places its grains across the stereo field.",
+}));
