@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(VstTemplate VERSION 0.1.0 LANGUAGES CXX C)
+project(Elderglass VERSION 0.1.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,12 +47,13 @@ endif()
 # before you ship anything — these become part of the plugin's identity in
 # every DAW and can't be changed later without breaking saved sessions.
 # ---------------------------------------------------------------------------
-juce_add_plugin(VstTemplate
-    COMPANY_NAME                "YourCompany"
-    PLUGIN_MANUFACTURER_CODE    Ycmp
-    PLUGIN_CODE                 Vst1
+juce_add_plugin(Elderglass
+    COMPANY_NAME                "Barking Noise Studios"
+    PLUGIN_MANUFACTURER_CODE    Bkns
+    PLUGIN_CODE                 Eldg
     FORMATS                     VST3 Standalone
-    PRODUCT_NAME                "VST Template"
+    PRODUCT_NAME                "Elderglass"
+    BUNDLE_ID                   com.barkingnoisestudios.elderglass
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
     NEEDS_MIDI_OUTPUT           FALSE
@@ -64,7 +65,7 @@ juce_add_plugin(VstTemplate
     # every build auto-installed for your DAW — see README.md.
     COPY_PLUGIN_AFTER_BUILD     FALSE
     NEEDS_WEBVIEW2              TRUE
-    VST3_CATEGORIES             Fx Filter
+    VST3_CATEGORIES             Fx Delay
     # JUCE normally runs a small generated helper .exe post-build to write
     # moduleinfo.json (an optional fast-scan manifest — hosts fall back to
     # normal plugin scanning without it). On machines with Device
@@ -77,22 +78,39 @@ juce_add_plugin(VstTemplate
 
 # Embed the web UI (HTML/CSS/JS) into the binary as C++ resources, so the
 # plugin is a single file with no external assets to ship or go missing.
-juce_add_binary_data(VstTemplateUIResources
+# JUCE's JS side of the parameter relays is embedded as well and served
+# under "juce/" (see PluginEditor::getResource).
+set(juce_js_dir "${juce_SOURCE_DIR}/modules/juce_gui_extra/native/javascript")
+juce_add_binary_data(ElderglassUIResources
     SOURCES
         UI/index.html
         UI/style.css
         UI/main.js
+        "${juce_js_dir}/index.js"
+        "${juce_js_dir}/check_native_interop.js"
 )
-set_target_properties(VstTemplateUIResources PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(ElderglassUIResources PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_sources(VstTemplate PRIVATE
+target_sources(Elderglass PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginProcessor.h
     Source/PluginEditor.cpp
     Source/PluginEditor.h
+    Source/Parameters.cpp
+    Source/Parameters.h
+    Source/DSP/DspUtils.h
+    Source/DSP/ClockedResampler.h
+    Source/DSP/DelayStage.h
+    Source/DSP/GrainStage.h
+    Source/DSP/FdnReverb.h
+    Source/DSP/PitchShifter.h
+    Source/DSP/PedalModel.h
+    Source/DSP/PedalCore.h
+    Source/DSP/GranularModel.h
+    Source/DSP/ReverseModel.h
 )
 
-target_compile_definitions(VstTemplate PUBLIC
+target_compile_definitions(Elderglass PUBLIC
     JUCE_WEB_BROWSER=1
     JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -100,9 +118,9 @@ target_compile_definitions(VstTemplate PUBLIC
     JUCE_STRICT_REFCOUNTEDPOINTER=1
 )
 
-target_link_libraries(VstTemplate
+target_link_libraries(Elderglass
     PRIVATE
-        VstTemplateUIResources
+        ElderglassUIResources
         juce::juce_audio_utils
         juce::juce_dsp
         juce::juce_gui_extra
@@ -111,3 +129,29 @@ target_link_libraries(VstTemplate
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# ---------------------------------------------------------------------------
+# Every Release build also lands in Builds/ at the top of the repo, so the
+# current plugin is easy to find (and is committed with the source).
+# ---------------------------------------------------------------------------
+set(elderglass_builds_dir "${CMAKE_SOURCE_DIR}/Builds")
+get_target_property(elderglass_vst3_bundle Elderglass_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
+
+add_custom_command(TARGET Elderglass_VST3 POST_BUILD
+    COMMAND "$<IF:$<CONFIG:Release>,${CMAKE_COMMAND};-E;copy_directory;${elderglass_vst3_bundle};${elderglass_builds_dir}/Elderglass.vst3,${CMAKE_COMMAND};-E;true>"
+    COMMAND_EXPAND_LISTS
+    VERBATIM)
+
+add_custom_command(TARGET Elderglass_Standalone POST_BUILD
+    COMMAND "$<IF:$<CONFIG:Release>,${CMAKE_COMMAND};-E;copy;$<TARGET_FILE:Elderglass_Standalone>;${elderglass_builds_dir}/Elderglass.exe,${CMAKE_COMMAND};-E;true>"
+    COMMAND_EXPAND_LISTS
+    VERBATIM)
+
+# ---------------------------------------------------------------------------
+# Offline DSP checks (plain console app, no JUCE): stability, latency and
+# transparency of the pedal engines. Run build/<config>/ElderglassDspTest.exe.
+# ---------------------------------------------------------------------------
+add_executable(ElderglassDspTest Tests/DspTest.cpp)
+
+# Reverb impulse-response analysis (echo density, periodicity). Informational.
+add_executable(ElderglassReverbAnalysis Tests/ReverbAnalysis.cpp)

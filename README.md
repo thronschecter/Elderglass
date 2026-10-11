@@ -1,90 +1,81 @@
-# VST Template
+# Elderglass
 
-A VST3 (and standalone) audio plugin template: **C++/JUCE 8** for the audio
-engine, **HTML/CSS/JS** for the UI, rendered in a native OS WebView.
+A VST3 (and standalone) plugin by **Barking Noise Studios** that combines two
+ambient pedals in one box, modelled on the Walrus Audio Lore and Fable:
 
-## Why this stack
+- **Reverse:** reverse delays and reverbs, octave reverbs, dueling pitch delays
+- **Granular:** delays feeding granular engines (reverse, octave up/down,
+  Grain-Verb, random pitch)
 
-**JUCE** is the de facto standard for cross-platform audio plugins — it wraps
-VST3/AU/AAX/LV2 hosting differences, ships a real-time-safe DSP library
-(`juce_dsp`), and is what most commercial plugins (FabFilter, u-he, Serum-ish
-competitors, etc.) and most tutorials/forums are built around. The
-alternatives are narrower: iPlug2 gives more low-level control at the cost of
-far less documentation; DPF is the leanest choice but is really aimed at
-Linux/LV2; Rust's `nih-plug` is excellent if the team already writes Rust
-but is a smaller ecosystem. For a general-purpose template, JUCE is the
-pragmatic default.
+The two pedals can be routed **Reverse → Granular**, **Granular → Reverse**, or
+in **Parallel**. In parallel, each pedal sits in its own channel path, and
+**Swap** moves the pedals between the left and right paths.
 
-**The UI is web technology (HTML/CSS/JS), not JUCE's native Component
-system.** JUCE 8 added a first-class `WebBrowserComponent` with a JS↔C++
-parameter bridge (`WebSliderRelay`/`WebComboBoxRelay`/`WebToggleButtonRelay`
-+ matching `Attachment` classes), so this is now a fully supported,
-non-hacky way to build plugin UIs. The payoff:
+Research notes are in [Docs/](Docs/).
 
-- **Flexibility** — any web UI framework (React, Vue, Svelte, or, as in this
-  template, plain JS) works, along with the entire CSS layout/animation
-  toolset and browser dev tools for live UI debugging.
-- **Separation of concerns** — the DSP/audio thread code stays C++ (where it
-  must be, for real-time safety), while the UI — the part that changes most
-  during design iteration — lives in a much faster edit/reload loop.
-- **Portability of UI skills** — front-end work doesn't require learning
-  JUCE's `Graphics`/`Component` API.
+## Download / install
 
-The trade-off: WebView UIs pull in a per-OS browser runtime (WebView2 on
-Windows, WKWebView on macOS) and the JS↔C++ bridge is a young API (JUCE 8+).
-If you'd rather avoid that and stay in pure native JUCE components, remove
-`Source/PluginEditor.*`'s WebView setup and build a normal `juce::Component`
-editor instead — the DSP/processor code is unaffected either way.
+The current Windows build is in [Builds/](Builds/):
+
+- `Builds/Elderglass.vst3`: copy this folder to `C:\Program Files\Common Files\VST3`
+- `Builds/Elderglass.exe`: standalone app, runs without a DAW
+
+## Status
+
+| Stage | Content | State |
+|---|---|---|
+| 1 | Engine shell, routing + swap, bypass/trails, tap tempo, Dive/Rise, tempo sync, Granular pedal (5 programs), UI | done |
+| 2 | Reverse pedal (5 programs) | done |
+| 3 | Final UI polish, tuning by ear | open |
 
 ## Project layout
 
 ```
-CMakeLists.txt          Fetches JUCE, defines the plugin target
-CMakePresets.json        Build presets (Visual Studio / Ninja)
+CMakeLists.txt             Fetches JUCE, defines the plugin and test targets
 Source/
-  PluginProcessor.h/.cpp  AudioProcessor: parameters (APVTS) + DSP (filter -> gain)
-  PluginEditor.h/.cpp     WebView editor: parameter relays + resource provider
-UI/
-  index.html, style.css, main.js   The actual UI, embedded into the binary
+  PluginProcessor.*        Routing, swap crossfade, latency, state
+  PluginEditor.*           WebView editor; one relay per parameter, named by ID
+  Parameters.*             Parameter layout (prefix rev_ / gran_), tap tempo
+  DSP/
+    PedalCore.h            Shared pedal shell: mix, bypass/trails, mod,
+                           program fades, Dive/Rise clock
+    ClockedResampler.h     Runs a pedal on its own clock (Dive/Rise)
+    PedalModel.h           Model interface + analog feedback path
+    DelayStage.h           Forward / reverse / analog delay "chip"
+    GrainStage.h           Granular "chip"
+    GranularModel.h        Granular pedal programs
+    ReverseModel.h         Reverse pedal programs
+    FdnReverb.h            8-line modulated FDN reverb
+    PitchShifter.h         Two-head pitch shifter (octaves, intervals)
+Tests/DspTest.cpp          Offline DSP checks (stability, latency, transparency)
+UI/                        HTML/CSS/JS, embedded into the binary
+Docs/                      Research notes
+Builds/                    Latest Release build (updated by every Release build)
 ```
-
-The example DSP is a state-variable filter (low/band/high-pass) feeding a
-gain stage, with a mute switch — enough real signal processing to build on,
-not just a stub.
 
 ## Building (Windows)
-
-This machine has Visual Studio 2022 Build Tools with a bundled CMake and
-Ninja, but no standalone `cmake` on `PATH`. Either add it to `PATH`:
-
-```
-C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin
-```
-
-or install CMake separately (`winget install Kitware.CMake`), then:
 
 ```powershell
 cmake --preset vs2022
 cmake --build --preset vs2022-release
+build\Release\ElderglassDspTest.exe     # offline DSP checks
 ```
 
-The first configure clones JUCE (~a few hundred MB) via `FetchContent` —
-it's cached in `build/_deps` afterwards, so only the first run is slow.
+The first configure clones JUCE via `FetchContent`, so it is slow once.
 
-The built plugin bundle lands at
-`build/VstTemplate_artefacts/Release/VST3/VST Template.vst3`. Auto-copying
-it into the system VST3 folder (`%COMMONPROGRAMFILES%\VST3`) is off by
-default because that folder needs admin rights — either copy it there
-yourself, point your DAW at a custom scan folder (most DAWs let you add
-one in preferences), or set `COPY_PLUGIN_AFTER_BUILD TRUE` in
-`CMakeLists.txt` and build from an elevated (Run as Administrator) shell.
+A Release build also copies both outputs to [Builds/](Builds/):
+- `Builds/Elderglass.vst3`
+- `Builds/Elderglass.exe` (fastest way to try it)
 
-The `Standalone` format is also built, at
-`build/VstTemplate_artefacts/Release/Standalone/VST Template.exe`, which is
-the fastest way to test without opening a DAW or admin rights.
+The plugin is not copied into the system VST3 folder automatically, because that
+needs admin rights. Copy it to `C:\Program Files\Common Files\VST3`, or add a
+custom scan folder in your DAW.
 
-## Before you ship anything
+## Using the pedals
 
-Change `COMPANY_NAME`, `PLUGIN_MANUFACTURER_CODE`, and `PLUGIN_CODE` in
-`CMakeLists.txt` — these identify the plugin to every DAW and host, and
-can't be changed later without breaking users' saved sessions.
+- **Knobs:** drag up/down; Shift for fine control; mouse wheel works too.
+- **Tap footswitch:** tap for tempo, hold for Dive/Rise. Pick Dive or Rise with
+  the button above it. The LED is blue for Dive and green for Rise.
+- **Sync:** follows the DAW tempo with the chosen note value instead of the Time
+  knob.
+- **Trails:** echoes fade out naturally after bypass.

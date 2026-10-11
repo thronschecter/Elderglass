@@ -6,3 +6,6 @@ out/
 *.user
 CMakeUserPresets.json
 .claude/
+
+# Walrus Audio's manuals: copyrighted, download links in Docs/Research.md
+Docs/Manuals/

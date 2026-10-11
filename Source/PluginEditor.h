@@ -7,34 +7,39 @@
 
 //==============================================================================
 // The UI lives in HTML/CSS/JS (see UI/), embedded into the binary and served
-// to a native OS WebView. C++ only owns the audio-thread-safe parameter
-// relays that keep the web page and the AudioProcessorValueTreeState in
-// sync — the DSP core stays C++, the UI stays web technology.
+// to a native OS WebView. Every processor parameter gets a relay named after
+// its parameter ID (slider / toggle / combo box by parameter type), so the
+// page binds to parameters by ID with no per-parameter C++ wiring.
 //==============================================================================
-class VstTemplateAudioProcessorEditor final : public juce::AudioProcessorEditor
+class ElderglassAudioProcessorEditor final : public juce::AudioProcessorEditor
 {
 public:
-    explicit VstTemplateAudioProcessorEditor(VstTemplateAudioProcessor&);
-    ~VstTemplateAudioProcessorEditor() override = default;
+    explicit ElderglassAudioProcessorEditor(ElderglassAudioProcessor&);
+    ~ElderglassAudioProcessorEditor() override = default;
 
     void resized() override;
 
 private:
+    struct Relays
+    {
+        explicit Relays(juce::AudioProcessorValueTreeState&);
+        juce::WebBrowserComponent::Options addTo(juce::WebBrowserComponent::Options) const;
+
+        std::vector<std::unique_ptr<juce::WebSliderRelay>> sliders;
+        std::vector<std::unique_ptr<juce::WebToggleButtonRelay>> toggles;
+        std::vector<std::unique_ptr<juce::WebComboBoxRelay>> combos;
+        std::vector<juce::RangedAudioParameter*> sliderParams, toggleParams, comboParams;
+    };
+
     std::optional<juce::WebBrowserComponent::Resource> getResource(const juce::String& url);
 
-    VstTemplateAudioProcessor& processorRef;
-
-    juce::WebSliderRelay gainRelay   { "gainSliderState" };
-    juce::WebSliderRelay cutoffRelay { "cutoffSliderState" };
-    juce::WebComboBoxRelay filterTypeRelay { "filterTypeComboState" };
-    juce::WebToggleButtonRelay muteRelay   { "muteToggleState" };
-
+    ElderglassAudioProcessor& processorRef;
+    Relays relays;
     juce::WebBrowserComponent webView;
 
-    juce::WebSliderParameterAttachment gainAttachment;
-    juce::WebSliderParameterAttachment cutoffAttachment;
-    juce::WebComboBoxParameterAttachment filterTypeAttachment;
-    juce::WebToggleButtonParameterAttachment muteAttachment;
+    std::vector<std::unique_ptr<juce::WebSliderParameterAttachment>> sliderAttachments;
+    std::vector<std::unique_ptr<juce::WebToggleButtonParameterAttachment>> toggleAttachments;
+    std::vector<std::unique_ptr<juce::WebComboBoxParameterAttachment>> comboAttachments;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VstTemplateAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ElderglassAudioProcessorEditor)
 };

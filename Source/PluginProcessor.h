@@ -1,26 +1,23 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
-#include <juce_dsp/juce_dsp.h>
 
-namespace IDs
-{
-    static const juce::ParameterID gain      { "gain",       1 };
-    static const juce::ParameterID cutoff    { "cutoff",     1 };
-    static const juce::ParameterID filterType{ "filterType", 1 };
-    static const juce::ParameterID mute      { "mute",       1 };
-}
+#include "Parameters.h"
+#include "DSP/PedalCore.h"
 
 //==============================================================================
-// A small but real DSP chain (filter -> gain) driven by an
-// AudioProcessorValueTreeState, so the template demonstrates parameter
-// automation, state save/restore and audio processing — not just a stub.
+// Elderglass: two pedals (reverse + granular) with three routings:
+//   Reverse -> Granular, Granular -> Reverse   (mono sum in, mono out to both sides)
+//   Parallel: each pedal sits in its own channel path; `swap` moves the
+//             pedals between the left and right paths (not just the outputs).
+// Latency is constant across routings (2 x the pedal latency), so switching
+// routing never shifts the plugin in time.
 //==============================================================================
-class VstTemplateAudioProcessor final : public juce::AudioProcessor
+class ElderglassAudioProcessor final : public juce::AudioProcessor
 {
 public:
-    VstTemplateAudioProcessor();
-    ~VstTemplateAudioProcessor() override = default;
+    ElderglassAudioProcessor();
+    ~ElderglassAudioProcessor() override = default;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -33,7 +30,7 @@ public:
     const juce::String getName() const override { return JucePlugin_Name; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override { return 20.0; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -44,18 +41,34 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    // Message thread: tap tempo for the pedal with this parameter prefix.
+    void tap(const juce::String& pedalPrefix, double pressAgeMs);
+
     juce::AudioProcessorValueTreeState parameters;
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    using Filter = juce::dsp::StateVariableTPTFilter<float>;
-    juce::dsp::ProcessorChain<Filter, juce::dsp::Gain<float>> processorChain;
+    static constexpr int pedalLatency = PedalCore::latencySamples;
 
-    std::atomic<float>* gainParam       = nullptr;
-    std::atomic<float>* cutoffParam     = nullptr;
-    std::atomic<float>* filterTypeParam = nullptr;
-    std::atomic<float>* muteParam       = nullptr;
+    PedalCore reversePedal, granularPedal;
+    PedalParameterSet reverseParams, granularParams;
+    TapTempo reverseTap, granularTap;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(VstTemplateAudioProcessor)
+    std::atomic<float>* routingParam = nullptr;
+    std::atomic<float>* swapParam    = nullptr;
+    std::atomic<float>* outputParam  = nullptr;
+
+    // Routing changes: fade out, switch, fade in.
+    int activeRouting = 0;
+    float routingGain = 1.0f, routingRamp = 0.001f;
+    // Swap crossfade position: 0 = reverse left / granular right, 1 = swapped.
+    float swapPosition = 0.0f, swapRamp = 0.001f;
+    juce::SmoothedValue<float> outputGain;
+
+    // Extra delay so parallel mode matches the two-pedal latency of series mode.
+    float parallelDelay[2][pedalLatency] {};
+    int parallelDelayIndex = 0;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ElderglassAudioProcessor)
 };
