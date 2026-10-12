@@ -38,6 +38,8 @@ namespace IDs
     static const juce::ParameterID stereo  { "stereo",  1 };
     static const juce::ParameterID width   { "width",   1 };
     static const juce::ParameterID output  { "output",  1 };
+    static const juce::ParameterID duck     { "duck",     1 };
+    static const juce::ParameterID duckSens { "duckSens", 1 };
 
     inline juce::ParameterID pedal(const juce::String& prefix, const char* name)
     {

@@ -42,6 +42,12 @@ button, select { font: inherit; color: inherit; }
     padding: 8px 22px 0;
 }
 
+.topbar__controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
 .brand h1 {
     margin: 0;
     font-family: Georgia, "Times New Roman", serif;

@@ -503,6 +503,22 @@ const outputKnob = document.querySelector('[data-param="output"]');
 createKnob(outputKnob, "output");
 attachTooltip(outputKnob, () => ({ title: "Output", text: "Overall output level of the plugin." }));
 
+const duckKnob = document.querySelector('[data-param="duck"]');
+createKnob(duckKnob, "duck");
+attachTooltip(duckKnob, () => ({
+    title: "Duck",
+    text: "Turns the effect down while you play and lets it swell back in the gaps. "
+        + "0 % off, 100 % effect fully muted while playing. The dry signal is never ducked.",
+}));
+
+const duckSensKnob = document.querySelector('[data-param="duckSens"]');
+createKnob(duckSensKnob, "duckSens");
+attachTooltip(duckSensKnob, () => ({
+    title: "Duck Sensitivity",
+    text: "How quietly you can play and still duck the effect. Low: only hard playing ducks. "
+        + "High: even soft notes duck.",
+}));
+
 const widthKnob = document.querySelector('[data-param="width"]');
 createKnob(widthKnob, "width");
 attachTooltip(widthKnob, () => ({

@@ -4,6 +4,7 @@
 
 #include "Parameters.h"
 #include "DSP/PedalCore.h"
+#include "DSP/Ducker.h"
 
 //==============================================================================
 // Elderglass: two pedals (reverse + granular) with three routings:
@@ -16,6 +17,8 @@
 // `width` is a mid/side control on the output: 0 % mono, 100 % as is, 200 %
 // extra wide. A mono source's dry signal is all mid, so width only moves the
 // effect.
+// Ducking (`duck` amount, `duckSens` sensitivity) follows the plugin input
+// and turns down both pedals' wet signals while you play; dry is untouched.
 // Latency is constant across routings (2 x the pedal latency), so switching
 // routing never shifts the plugin in time.
 //==============================================================================
@@ -66,13 +69,16 @@ private:
     std::atomic<float>* outputParam  = nullptr;
     std::atomic<float>* stereoParam  = nullptr;
     std::atomic<float>* widthParam   = nullptr;
+    std::atomic<float>* duckParam     = nullptr;
+    std::atomic<float>* duckSensParam = nullptr;
 
     // Routing changes: fade out, switch, fade in.
     int activeRouting = 0;
     float routingGain = 1.0f, routingRamp = 0.001f;
     // Swap crossfade position: 0 = reverse left / granular right, 1 = swapped.
     float swapPosition = 0.0f, swapRamp = 0.001f;
-    juce::SmoothedValue<float> outputGain, width;
+    juce::SmoothedValue<float> outputGain, width, duckAmount, duckSensitivity;
+    Ducker ducker;
     // Series stereo blend of the inputs: 0 = mono sum to both, 1 = L/R.
     float stereoPosition = 0.0f, stereoRamp = 0.001f;
 

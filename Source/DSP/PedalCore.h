@@ -15,6 +15,8 @@
 //     (rise) speed and back on release (see ClockedResampler)
 //   - Stereo amount: 0 = the mono pedal (both outputs identical), 1 = the
 //     model's stereo output, with the Mod LFO 90 degrees apart on L/R.
+//   - Ducking: process() takes a per-sample gain for the wet signal only
+//     (see Ducker); the dry path is never touched.
 // Stereo in, stereo out, at host rate. Latency: ClockedResampler::latencySamples.
 //==============================================================================
 struct PedalSettings
@@ -97,7 +99,7 @@ public:
         modLfo.setRate(s.modRate);
     }
 
-    StereoSample process(StereoSample in) noexcept
+    StereoSample process(StereoSample in, float wetDuck = 1.0f) noexcept
     {
         // Dry path, delayed to line up with the wet path's resampler latency.
         const StereoSample dry = dryDelay[dryIndex];
@@ -131,7 +133,7 @@ public:
         const auto wet = resampler.process({ in.l * inGain, in.r * inGain }, clockRatio,
                                            [this](StereoSample x) { return tickEngine(x); });
 
-        const float wetGain = std::sin(0.5f * dsp::pi * mix) * programGain * (settings.trails ? 1.0f : enabledGain);
+        const float wetGain = std::sin(0.5f * dsp::pi * mix) * programGain * wetDuck * (settings.trails ? 1.0f : enabledGain);
         return { dry.l * dryGain + wet.l * wetGain, dry.r * dryGain + wet.r * wetGain };
     }
 

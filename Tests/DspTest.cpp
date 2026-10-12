@@ -10,6 +10,7 @@
 #include "../Source/DSP/PedalCore.h"
 #include "../Source/DSP/GranularModel.h"
 #include "../Source/DSP/ReverseModel.h"
+#include "../Source/DSP/Ducker.h"
 
 namespace
 {
@@ -256,6 +257,50 @@ namespace
         }
         check(maxErr < 1.0e-5f, "bypass without trails: only dry after the fade");
     }
+
+    void testDucker()
+    {
+        auto run = [](float level, float sensitivity, float amount, float seconds)
+        {
+            Ducker d;
+            d.prepare(sr);
+            for (int i = 0; i < static_cast<int>(sr * seconds); ++i)
+                d.process(level * std::sin(dsp::twoPi * 220.0f * static_cast<float>(i) / sr), sensitivity, amount);
+            return d.getGain();
+        };
+
+        check(run(0.5f, 1.0f, 0.0f, 0.5f) == 1.0f, "ducker: amount 0 never ducks");
+        check(run(0.5f, 1.0f, 1.0f, 0.5f) < 0.01f, "ducker: loud input, full amount mutes the wet");
+        check(std::abs(run(0.5f, 1.0f, 0.5f, 0.5f) - 0.5f) < 0.01f, "ducker: amount 50% halves the wet");
+        check(run(0.01f, 0.0f, 1.0f, 0.5f) > 0.99f, "ducker: quiet input at low sensitivity does not duck");
+        check(run(0.01f, 1.0f, 1.0f, 0.5f) < 0.1f, "ducker: quiet input at high sensitivity ducks");
+
+        // Recovery: duck, then silence; the wet comes back within a second or two.
+        Ducker d;
+        d.prepare(sr);
+        for (int i = 0; i < static_cast<int>(sr * 0.3f); ++i)
+            d.process(0.5f, 1.0f, 1.0f);
+        const float ducked = d.getGain();
+        for (int i = 0; i < static_cast<int>(sr * 1.5f); ++i)
+            d.process(0.0f, 1.0f, 1.0f);
+        check(ducked < 0.01f && d.getGain() > 0.95f, "ducker: wet recovers after the input stops");
+
+        // Ducking reaches the wet path only: with mix 0 % the dry is unchanged.
+        const auto in = makeInput(1);
+        PedalCore pedal(std::make_unique<ReverseModel>());
+        PedalSettings s;
+        s.mix = 0.0f;
+        pedal.setSettings(s);
+        pedal.prepare(sr);
+        float maxErr = 0.0f;
+        for (size_t i = 0; i < in.size(); ++i)
+        {
+            const float y = pedal.process({ in[i], in[i] }, 0.0f).l;
+            if (i >= PedalCore::latencySamples)
+                maxErr = std::max(maxErr, std::abs(y - in[i - PedalCore::latencySamples]));
+        }
+        check(maxErr < 1.0e-5f, "ducking leaves the dry path untouched");
+    }
 }
 
 int main()
@@ -269,6 +314,7 @@ int main()
     testStereo<GranularModel>("granular");
     testStereo<ReverseModel>("reverse ");
     testDiveRise();
+    testDucker();
 
     std::printf("\n%s (%d failure%s)\n", failures == 0 ? "ALL PASSED" : "FAILED", failures, failures == 1 ? "" : "s");
     return failures == 0 ? 0 : 1;

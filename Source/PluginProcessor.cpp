@@ -19,6 +19,8 @@ ElderglassAudioProcessor::ElderglassAudioProcessor()
     outputParam  = parameters.getRawParameterValue(IDs::output.getParamID());
     stereoParam  = parameters.getRawParameterValue(IDs::stereo.getParamID());
     widthParam   = parameters.getRawParameterValue(IDs::width.getParamID());
+    duckParam     = parameters.getRawParameterValue(IDs::duck.getParamID());
+    duckSensParam = parameters.getRawParameterValue(IDs::duckSens.getParamID());
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout ElderglassAudioProcessor::createParameterLayout()
@@ -39,6 +41,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout ElderglassAudioProcessor::cr
         IDs::output, "Output",
         juce::NormalisableRange<float>(-24.0f, 12.0f, 0.1f), 0.0f,
         juce::AudioParameterFloatAttributes().withLabel("dB")));
+
+    const auto percent = juce::AudioParameterFloatAttributes().withLabel("%")
+        .withStringFromValueFunction([](float v, int) { return juce::String(juce::roundToInt(v)); });
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        IDs::duck, "Duck Amount", juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 0.0f, percent));
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        IDs::duckSens, "Duck Sensitivity", juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 50.0f, percent));
 
     addPedalParameters(layout, IDs::reversePrefix, "Reverse",
         { "I Rev Delay > Rev Reverb", "II Rev Delay > Oct Up Reverb", "III Rev Delay > Oct Down Reverb",
@@ -68,6 +77,11 @@ void ElderglassAudioProcessor::prepareToPlay(double sampleRate, int)
     outputGain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(outputParam->load()));
     width.reset(sampleRate, 0.05);
     width.setCurrentAndTargetValue(widthParam->load() * 0.01f);
+    duckAmount.reset(sampleRate, 0.05);
+    duckAmount.setCurrentAndTargetValue(duckParam->load() * 0.01f);
+    duckSensitivity.reset(sampleRate, 0.05);
+    duckSensitivity.setCurrentAndTargetValue(duckSensParam->load() * 0.01f);
+    ducker.prepare(static_cast<float>(sampleRate));
     stereoPosition = stereoParam->load() > 0.5f ? 1.0f : 0.0f;
     stereoRamp = static_cast<float>(1.0 / (0.030 * sampleRate));
 
@@ -119,6 +133,8 @@ void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     width.setTargetValue(widthParam->load() * 0.01f);
     const float swapTarget = swapParam->load() > 0.5f ? 1.0f : 0.0f;
     outputGain.setTargetValue(juce::Decibels::decibelsToGain(outputParam->load()));
+    duckAmount.setTargetValue(duckParam->load() * 0.01f);
+    duckSensitivity.setTargetValue(duckSensParam->load() * 0.01f);
 
     const int numIn  = getTotalNumInputChannels();
     const int numOut = getTotalNumOutputChannels();
@@ -160,6 +176,10 @@ void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
         const float r = inR[i];
         float yl = 0.0f, yr = 0.0f;
 
+        // Ducking follows the input (both channels), same gain on both pedals.
+        const float duck = ducker.process(std::max(std::abs(l), std::abs(r)),
+                                          duckSensitivity.getNextValue(), duckAmount.getNextValue());
+
         if (activeRouting == static_cast<int>(Routing::Parallel))
         {
             // Swap moves the pedals between the two paths. During the
@@ -168,8 +188,8 @@ void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
             const float g = swapPosition;
             const float revIn  = (1.0f - g) * l + g * r;
             const float granIn = (1.0f - g) * r + g * l;
-            const float rev  = reversePedal.process({ revIn, revIn }).l;
-            const float gran = granularPedal.process({ granIn, granIn }).l;
+            const float rev  = reversePedal.process({ revIn, revIn }, duck).l;
+            const float gran = granularPedal.process({ granIn, granIn }, duck).l;
             const float pl = (1.0f - g) * rev + g * gran;
             const float pr = (1.0f - g) * gran + g * rev;
 
@@ -185,8 +205,8 @@ void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
             const float mono = 0.5f * (l + r);
             const StereoSample in { mono + stereoPosition * (l - mono), mono + stereoPosition * (r - mono) };
             const auto y = activeRouting == static_cast<int>(Routing::ReverseIntoGranular)
-                               ? granularPedal.process(reversePedal.process(in))
-                               : reversePedal.process(granularPedal.process(in));
+                               ? granularPedal.process(reversePedal.process(in, duck), duck)
+                               : reversePedal.process(granularPedal.process(in, duck), duck);
             yl = y.l;
             yr = y.r;
 
