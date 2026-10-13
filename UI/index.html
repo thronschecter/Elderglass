@@ -13,6 +13,8 @@
             <span class="maker">Barking Noise Studios</span>
         </div>
         <div class="topbar__controls">
+            <span class="midi-hint" id="midiHint">Click a control, then move a MIDI controller. Right-click clears.</span>
+            <button type="button" class="pill" id="midiLearnButton">MIDI Learn</button>
             <div class="knob knob--small" data-param="duckSens" data-label="Sens"></div>
             <div class="knob knob--small" data-param="duck" data-label="Duck"></div>
             <div class="knob knob--small" data-param="output" data-label="Output"></div>
@@ -33,7 +35,7 @@
             <button type="button" class="pill" id="stereoButton">Stereo</button>
             <button type="button" class="pill" id="faceplateButton">Matte black</button>
             <div class="knob knob--small" data-param="width" data-label="Width"></div>
-            <div class="footswitch footswitch--master">
+            <div class="footswitch footswitch--master" data-midi="tapBoth">
                 <span class="led" id="masterTapLed"></span>
                 <button type="button" class="stomp" id="masterTap" aria-label="Tap both pedals, hold for Dive/Rise on both"></button>
                 <span class="footswitch__label">tap &middot; hold both</span>
@@ -46,7 +48,9 @@
             <div class="pedal__head">
                 <h2 class="pedal__name"></h2>
             </div>
-            <select class="program" aria-label="Program"></select>
+            <div class="program-wrap" data-midi-suffix="program">
+                <select class="program" aria-label="Program"></select>
+            </div>
             <p class="pedal__hint"></p>
 
             <div class="knobs">
@@ -68,12 +72,12 @@
             </div>
 
             <div class="footswitches">
-                <div class="footswitch">
+                <div class="footswitch" data-midi-suffix="bypass">
                     <span class="led led--bypass"></span>
                     <button type="button" class="stomp" data-stomp="bypass" aria-label="Bypass"></button>
                     <span class="footswitch__label">bypass</span>
                 </div>
-                <div class="footswitch">
+                <div class="footswitch" data-midi-suffix="tap">
                     <span class="led led--tap"></span>
                     <button type="button" class="stomp" data-stomp="tap" aria-label="Tap, hold for Dive/Rise"></button>
                     <span class="footswitch__label">tap &middot; hold</span>

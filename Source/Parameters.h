@@ -77,7 +77,7 @@ void addPedalParameters(juce::AudioProcessorValueTreeState::ParameterLayout& lay
 //==============================================================================
 struct PedalParameterSet
 {
-    void attach(juce::AudioProcessorValueTreeState&, const juce::String& prefix);
+    PedalParameterSet(juce::AudioProcessorValueTreeState&, const juce::String& prefix);
 
     // Fills PedalSettings from the current parameter values. bpm <= 0 means
     // the host gave no tempo (sync then falls back to the Time knob).

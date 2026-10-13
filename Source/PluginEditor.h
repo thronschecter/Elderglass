@@ -10,12 +10,14 @@
 // to a native OS WebView. Every processor parameter gets a relay named after
 // its parameter ID (slider / toggle / combo box by parameter type), so the
 // page binds to parameters by ID with no per-parameter C++ wiring.
+// MIDI learn: native functions midiLearn(target) / midiClear(target) /
+// midiMap(), and a "midiMap" event whenever the mappings change.
 //==============================================================================
 class ElderglassAudioProcessorEditor final : public juce::AudioProcessorEditor
 {
 public:
     explicit ElderglassAudioProcessorEditor(ElderglassAudioProcessor&);
-    ~ElderglassAudioProcessorEditor() override = default;
+    ~ElderglassAudioProcessorEditor() override;
 
     void resized() override;
 

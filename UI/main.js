@@ -327,6 +327,8 @@ function buildPedal(def) {
     panels[def.prefix] = panel;
 
     const p = (suffix) => def.prefix + suffix;
+    // MIDI learn targets (see MidiLearn.h): knobs are named by parameter ID.
+    panel.querySelectorAll("[data-midi-suffix]").forEach((el) => (el.dataset.midi = p(el.dataset.midiSuffix)));
     mountArt(panel, ART[def.art.figure], getSliderState(p("mix")), { stages: def.art.stages });
     const knobs = {};
 
@@ -353,6 +355,7 @@ function buildPedal(def) {
 
     panel.querySelectorAll(".knob[data-suffix]").forEach((el) => {
         const suffix = el.dataset.suffix;
+        el.dataset.midi = p(suffix);
         knobs[suffix] = createKnob(el, p(suffix), {
             format: suffix === "time" ? (v) => timeText(v) : suffix === "x" ? xText : undefined,
         });
@@ -450,7 +453,9 @@ const masterBlink = () => {
     const times = controls.map((c) => c.timeState.getScaledValue());
     const shared = controls.every((c) => !c.isSynced()) && Math.abs(times[0] - times[1]) < 1.5;
     const phase = ((performance.now() - masterBlinkStart) % times[0]) / times[0];
-    masterLed.classList.toggle("is-on", masterHeld || (shared && phase < 0.18));
+    // Held here, or on both pedals at once (e.g. by MIDI).
+    const bothHeld = controls.every((c) => c.warpState.getValue());
+    masterLed.classList.toggle("is-on", masterHeld || bothHeld || (shared && phase < 0.18));
     requestAnimationFrame(masterBlink);
 };
 requestAnimationFrame(masterBlink);
@@ -551,4 +556,83 @@ attachTooltip(faceplateButton, () => ({
 attachTooltip(stereoButton, () => ({
     title: "Stereo",
     text: "Mono: like the hardware. Stereo: the reverse pedal runs a left and a right engine, the granular pedal places its grains across the stereo field.",
+}));
+
+// ---------------------------------------------------------------------------
+// MIDI learn. In learn mode, clicking a control (any [data-midi] element)
+// arms it; the next MIDI CC is mapped to it. Clicking it again disarms it,
+// right-clicking clears its mapping. The mappings live in the processor
+// (MidiLearn), which reports every change with a "midiMap" event.
+// ---------------------------------------------------------------------------
+const midiLearnNative = getNativeFunction("midiLearn");
+const midiClearNative = getNativeFunction("midiClear");
+const midiMapNative = getNativeFunction("midiMap");
+const midiLearnButton = document.getElementById("midiLearnButton");
+let learnMode = false;
+let armed = "";
+let midiMap = {};
+
+function renderMidi() {
+    document.body.classList.toggle("is-midi-learning", learnMode);
+    midiLearnButton.setAttribute("aria-pressed", String(learnMode));
+    document.querySelectorAll("[data-midi]").forEach((el) => {
+        let badge = el.querySelector(":scope > .midi-badge");
+        if (!badge) {
+            badge = document.createElement("span");
+            badge.className = "midi-badge";
+            el.appendChild(badge);
+        }
+        const m = midiMap[el.dataset.midi];
+        badge.textContent = m ? `CC ${m.cc}${m.channel !== 1 ? ` ch ${m.channel}` : ""}` : "";
+        el.classList.toggle("is-midi-mapped", Boolean(m));
+        el.classList.toggle("is-midi-armed", el.dataset.midi === armed);
+    });
+}
+
+function applyMidiState(state) {
+    midiMap = state?.map ?? {};
+    armed = state?.learning ?? "";
+    renderMidi();
+}
+
+function setLearnMode(on) {
+    learnMode = on;
+    if (!on && armed) midiLearnNative("");
+    armed = "";
+    tooltip.classList.remove("is-visible");
+    renderMidi();
+}
+
+// Capture phase: while learning, the controls themselves don't react.
+const learnIntercept = (e) => {
+    if (!learnMode) return;
+    const el = e.target.closest?.("[data-midi]");
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type !== "pointerdown") return;
+
+    const target = el.dataset.midi;
+    if (e.button === 2) {
+        midiClearNative(target);
+        return;
+    }
+    armed = armed === target ? "" : target;
+    midiLearnNative(armed);
+    renderMidi();
+};
+["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "wheel", "contextmenu"].forEach((type) =>
+    window.addEventListener(type, learnIntercept, { capture: true, passive: false }));
+window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && learnMode) setLearnMode(false);
+});
+
+midiLearnButton.addEventListener("click", () => setLearnMode(!learnMode));
+window.__JUCE__.backend.addEventListener("midiMap", applyMidiState);
+midiMapNative().then(applyMidiState);
+attachTooltip(midiLearnButton, () => (learnMode ? null : {
+    title: "MIDI Learn",
+    text: "Map MIDI CCs to the pedals' knobs, program selectors and footswitches. "
+        + "Footswitches want momentary CCs (127 on press, 0 on release): a short press taps, a long press holds Dive/Rise. "
+        + "While Sync is on, the Time CC picks the note value.",
 }));
