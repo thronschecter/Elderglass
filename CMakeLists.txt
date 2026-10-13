@@ -75,6 +75,9 @@ juce_add_plugin(Elderglass
     # every build auto-installed for your DAW — see README.md.
     COPY_PLUGIN_AFTER_BUILD     FALSE
     NEEDS_WEBVIEW2              TRUE
+    # Linux: links WebKitGTK for the UI, and embeds the helper process the
+    # plugin needs to host it.
+    NEEDS_WEB_BROWSER           TRUE
     VST3_CATEGORIES             Fx Delay
     # JUCE normally runs a small generated helper .exe post-build to write
     # moduleinfo.json (an optional fast-scan manifest — hosts fall back to
@@ -124,7 +127,7 @@ target_sources(Elderglass PRIVATE
 
 target_compile_definitions(Elderglass PUBLIC
     JUCE_WEB_BROWSER=1
-    JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1
+    $<$<PLATFORM_ID:Windows>:JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1>
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_STRICT_REFCOUNTEDPOINTER=1
@@ -149,7 +152,9 @@ target_link_libraries(Elderglass
 
 # ---------------------------------------------------------------------------
 # Every Release build also lands in Builds/ at the top of the repo, so the
-# current plugin is easy to find (and is committed with the source).
+# current plugin is easy to find (and is committed with the source). The
+# Windows and Linux builds share one VST3 bundle (Contents/x86_64-win and
+# Contents/x86_64-linux); the standalone app is Elderglass.exe / Elderglass.
 # ---------------------------------------------------------------------------
 set(elderglass_builds_dir "${CMAKE_SOURCE_DIR}/Builds")
 get_target_property(elderglass_vst3_bundle Elderglass_VST3 JUCE_PLUGIN_ARTEFACT_FILE)
@@ -160,13 +165,14 @@ add_custom_command(TARGET Elderglass_VST3 POST_BUILD
     VERBATIM)
 
 add_custom_command(TARGET Elderglass_Standalone POST_BUILD
-    COMMAND "$<IF:$<CONFIG:Release>,${CMAKE_COMMAND};-E;copy;$<TARGET_FILE:Elderglass_Standalone>;${elderglass_builds_dir}/Elderglass.exe,${CMAKE_COMMAND};-E;true>"
+    COMMAND "$<IF:$<CONFIG:Release>,${CMAKE_COMMAND};-E;copy;$<TARGET_FILE:Elderglass_Standalone>;${elderglass_builds_dir}/$<TARGET_FILE_NAME:Elderglass_Standalone>,${CMAKE_COMMAND};-E;true>"
     COMMAND_EXPAND_LISTS
     VERBATIM)
 
 # ---------------------------------------------------------------------------
 # Offline DSP checks (plain console app, no JUCE): stability, latency and
-# transparency of the pedal engines. Run build/<config>/ElderglassDspTest.exe.
+# transparency of the pedal engines. Run build/<config>/ElderglassDspTest.exe
+# (Linux: build-linux/ElderglassDspTest).
 # ---------------------------------------------------------------------------
 add_executable(ElderglassDspTest Tests/DspTest.cpp)
 

@@ -81,6 +81,44 @@ The plugin is not copied into the system VST3 folder automatically, because that
 needs admin rights. Copy it to `C:\Program Files\Common Files\VST3`, or add a
 custom scan folder in your DAW.
 
+## Building (Linux)
+
+Not built or tested yet. The UI runs in WebKitGTK instead of WebView2. Needs
+CMake 3.22+, a C++20 compiler and the development packages.
+
+Debian/Ubuntu (22.04 or newer, for WebKitGTK 4.1):
+
+```bash
+sudo apt install build-essential cmake pkg-config git \
+    libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
+    libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+    libxrandr-dev libxrender-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+```
+
+Arch/CachyOS (with PipeWire, take `pipewire-jack` instead of `jack2`):
+
+```bash
+sudo pacman -S --needed base-devel cmake pkgconf git \
+    alsa-lib jack2 freetype2 fontconfig \
+    libx11 libxcomposite libxcursor libxext libxinerama libxrandr libxrender \
+    gtk3 webkit2gtk-4.1
+```
+
+Then:
+
+```bash
+cmake --preset linux
+cmake --build --preset linux-release -j
+build-linux/ElderglassDspTest              # offline DSP checks
+```
+
+A Release build copies the standalone app to `Builds/Elderglass` and adds the
+Linux binary to the shared `Builds/Elderglass.vst3` bundle; copy the bundle to
+`~/.vst3`. The installed system also needs the WebKitGTK runtime
+(`libwebkit2gtk-4.1`). A binary only runs on systems with the same or a newer
+glibc, so build the one committed to `Builds/` on the older system (an Ubuntu
+LTS rather than a rolling release like CachyOS).
+
 ## Using the pedals
 
 - **Knobs:** drag up/down; Shift for fine control; mouse wheel works too.

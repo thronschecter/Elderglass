@@ -9,6 +9,15 @@
             "binaryDir": "${sourceDir}/build"
         },
         {
+            "name": "linux",
+            "displayName": "Linux (Release, Unix Makefiles)",
+            "generator": "Unix Makefiles",
+            "binaryDir": "${sourceDir}/build-linux",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
             "name": "ninja",
             "displayName": "Ninja (run from a VS Developer Command Prompt)",
             "generator": "Ninja",
@@ -28,6 +37,10 @@
             "name": "vs2022-release",
             "configurePreset": "vs2022",
             "configuration": "Release"
+        },
+        {
+            "name": "linux-release",
+            "configurePreset": "linux"
         },
         {
             "name": "ninja",
