@@ -40,6 +40,16 @@ if(WIN32)
 
     set(JUCE_WEBVIEW2_PACKAGE_LOCATION "${webview2_nuget_dir}" CACHE PATH
         "Location of the WebView2 NuGet package" FORCE)
+
+    # Steinberg ASIO SDK, used under its GPLv3 option, so the Standalone app
+    # can open ASIO drivers. Only the headers in common/ are needed.
+    FetchContent_Declare(
+        asiosdk
+        URL                        "https://download.steinberg.net/sdk_downloads/ASIO-SDK_2.3.4_2025-10-15.zip"
+        URL_HASH                   SHA256=D5EBF0C20DD2C5F43771FD0C1418F4B361BF52434EE670097CFA6B3A335E2ECA
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(asiosdk)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -118,7 +128,12 @@ target_compile_definitions(Elderglass PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
     JUCE_STRICT_REFCOUNTEDPOINTER=1
+    $<$<PLATFORM_ID:Windows>:JUCE_ASIO=1>
 )
+
+if(WIN32)
+    target_include_directories(Elderglass PRIVATE "${asiosdk_SOURCE_DIR}/common")
+endif()
 
 target_link_libraries(Elderglass
     PRIVATE
