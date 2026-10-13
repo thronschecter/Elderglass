@@ -1,8 +1,9 @@
 // Pedal artwork: a silhouette with glowing lines that light up with the
 // pedal's Mix. The figures come from art-data.js (Tools/generate_art.py).
 //
-// Every stroke has a delay; a light front moves at one speed over all of
-// them, so the glow starts at several points and flows out to every tip.
+// Every stroke has a delay and a speed: a light front moves over all of
+// them, and each stroke grows from its delay on at its own speed (easing in
+// and out by `fig.ease`), so the glow flows out unevenly, like it catches.
 // With `stages`, the front fills the lines over the first half of the Mix and
 // a white core fades in over the second half (the glow gets hotter).
 
@@ -60,9 +61,10 @@ export function mountArt(panel, fig, mixState, { stages = false } = {}) {
         const p = el("path", { d: s.d, "stroke-width": s.w, "stroke-opacity": s.o ?? 1 }, lit);
         const len = p.getTotalLength();
         p.style.strokeDasharray = `${len} ${len}`;
-        end = Math.max(end, s.delay + len);
+        const speed = s.s ?? 1;
+        end = Math.max(end, s.delay + len / speed);
         if (core) el("path", { d: s.d, "stroke-width": Math.max(0.1, s.w * 0.3) }, core);
-        return { p, len, delay: s.delay };
+        return { p, len, delay: s.delay, speed };
     });
     const grains = (fig.grains ?? []).map(([x, y, r, delay]) => {
         end = Math.max(end, delay);
@@ -73,8 +75,12 @@ export function mountArt(panel, fig, mixState, { stages = false } = {}) {
     const refresh = () => {
         const mix = mixState.getNormalisedValue();
         const front = end * (stages ? Math.min(1, mix / 0.5) : mix);
-        for (const s of strokes)
-            s.p.style.strokeDashoffset = s.len - Math.min(s.len, Math.max(0, front - s.delay));
+        const ease = fig.ease ?? 0;
+        for (const s of strokes) {
+            const t = Math.min(1, Math.max(0, ((front - s.delay) * s.speed) / s.len));
+            const grown = t + ease * (t * t * (3 - 2 * t) - t);
+            s.p.style.strokeDashoffset = s.len * (1 - grown);
+        }
         for (const g of grains)
             g.c.classList.toggle("is-lit", front >= g.delay);
 

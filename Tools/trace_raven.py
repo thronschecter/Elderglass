@@ -89,7 +89,7 @@ def contours(mask, eps=0.8, min_area=30):
         if abs(cv2.contourArea(c)) < min_area:
             continue
         P = simplify(c.reshape(-1, 2), eps, True)
-        a = cv2.contourArea(np.array(P, np.float32))
+        a = cv2.contourArea(np.array(P, np.float32), oriented=True)
         hole = h[3] >= 0
         if (a < 0) != hole:            # outer: positive area, hole: negative
             P.reverse()
