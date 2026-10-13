@@ -65,7 +65,7 @@ const PEDALS = [
         prefix: "gran_",
         name: "Granular",
         cssClass: "pedal--gran",
-        art: { figure: "raven", stages: false },
+        art: { figure: "raven", stages: true },
         hints: [
             "Reverse delay into reverse grains. X: grain size (left long, right choppy). Time: delay and grain buffer.",
             "Forward delay into octave-up grains (double speed). X: grain size. Time: delay and grain buffer.",
