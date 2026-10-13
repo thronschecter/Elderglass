@@ -1,9 +1,10 @@
 # Generates the pedal artwork (UI/art-data.js): an old tree for the reverse
-# pedal and a raven seen from above for the granular pedal.
+# pedal and, for the granular pedal, a raven traced from Tools/art/raven_source.png
+# (Tools/trace_raven.py writes Tools/art/raven_trace.json).
 #
 # Each figure is a silhouette fill plus many glow strokes, each with a delay.
 # A light front travels at one speed from several start points (the roots,
-# the raven's head and heart): stroke i is lit over [delay, delay + length].
+# the raven's eye and heart): stroke i is lit over [delay, delay + length].
 # UI/art.js draws the figures and moves the front with the pedal's Mix.
 #
 # Deterministic for a given seed. Run from the repo root:
@@ -189,7 +190,9 @@ def make_tree():
     # Smoothed node positions. Chains come parent-first, so a branch always
     # starts exactly on its parent's smoothed line.
     sm = {}
-    for ch in chains:
+    twigs = []        # glow line of every centre vein: (stroke indices, length, end point, width, chain)
+    total_len = 0.0
+    for ci, ch in enumerate(chains):
         ws = [width(i) for i in ch]
         # Lead in from the parent's direction so the branch curves out of it
         # instead of leaving at a hard angle; the lead-in point is dropped after.
@@ -224,6 +227,10 @@ def make_tree():
             w_ = round(min(1.2, 0.3 + 0.16 * ws[0] / k ** 0.5), 2)
             o_ = round(min(1.0, 0.45 + 0.22 * ws[0]), 2)
             d0 = root_len + dist[ch[0]]
+            total_len += plen(pts)
+            if off == 0.0:
+                twigs.append((list(range(len(strokes), len(strokes) + (3 if plen(pts) > 7 else 1))),
+                              plen(pts), pts[-1], w_, ci))
             if off == 0.0 and plen(pts) > 7:
                 # Pointed tip: the last stretch tapers in two steps.
                 main, tail = split_at(pts, plen(pts) - 5.0)
@@ -233,6 +240,26 @@ def make_tree():
                 strokes.append({"d": smooth(tip), "w": round(w_ * 0.3, 2), "o": o_, "delay": round(d0 + plen(main) + plen(mid_), 1)})
             else:
                 strokes.append({"d": smooth(pts, tension=0.5), "w": w_, "o": o_, "delay": round(d0, 1)})
+    # Thin out the glow by 10 % of its length, taking twigs from the back of the
+    # crown: thin end twigs (nothing grows from them) whose tips lie deep inside
+    # it, the most central first. Their wood stays in the silhouette.
+    starts = {T.parent[ch[1]] for ch in chains if len(ch) > 1 and T.parent[ch[1]] >= 0}
+    tips = [T.pos[i] for i in range(n) if not kids[i]]
+    cx = sum(q[0] for q in tips) / len(tips)
+    cy = sum(q[1] for q in tips) / len(tips)
+    rad = sorted(math.dist(q, (cx, cy)) for q in tips)[int(len(tips) * 0.9)]
+    def terminal(ci):
+        return not any(i in starts for i in chains[ci][1:])
+    back = sorted((t for t in twigs if t[3] <= 0.45 and terminal(t[4])),
+                  key=lambda t: math.dist(t[2], (cx, cy)) / rad)
+    drop, removed = set(), 0.0
+    for idx, length, end, w_, ci in back:
+        if removed >= total_len * 0.10:
+            break
+        drop.update(idx)
+        removed += length
+    strokes[:] = [st for i, st in enumerate(strokes) if i not in drop]
+
     for pts, ws in roots:
         n_ = len(pts)
         Lp, Rp = [], []
@@ -249,8 +276,9 @@ def make_tree():
             rev = [(p[0], p[1] + o * w) for p, w in zip(reversed(pts), reversed(ws))]
             strokes.append({"d": smooth(rev), "w": 0.8, "delay": round(root_len - plen(pts), 1)})
 
-    # Ground mound under the tree.
-    return {"viewBox": "0 30 260 240", "fill": " ".join(fill), "ground": "", "mist": [130, 262, 120, 9], "strokes": strokes,
+    # Ground mound under the tree. The view starts 14 units lower than the
+    # raven's, which lifts the tree so its crown starts level with the raven's head.
+    return {"viewBox": "0 44 260 240", "fill": " ".join(fill), "ground": "", "mist": [130, 262, 120, 9], "strokes": strokes,
             "aura": [130, 196, 110], "motes": motes(26, (40, 220), (40, 150))}
 
 def motes(n, xr, yr):
@@ -258,180 +286,55 @@ def motes(n, xr, yr):
             for _ in range(n)]
 
 # ===================================================================== raven
-def feather(root, angle, length, width, bend=0.0, steps=10):
-    """Primary feather seen from above: narrow, slightly curved, rounded tip.
-    Returns (outline polygon, shaft points)."""
-    spine, a, p = [], angle, root
-    for i in range(steps + 1):
-        spine.append(p)
-        d = unit(a)
-        p = (p[0] + d[0] * length / steps, p[1] + d[1] * length / steps)
-        a += bend / steps
-    L, R = [], []
-    for i, q in enumerate(spine):
-        t = i / steps
-        w = width * 0.5 * (0.55 + 0.45 * math.sin(min(1, t * 1.6) * math.pi / 2)) * math.sqrt(max(0, 1 - t ** 4))
-        n = unit(angle + bend * t + 90)
-        L.append((q[0] + n[0] * w, q[1] + n[1] * w))
-        R.append((q[0] - n[0] * w, q[1] - n[1] * w))
-    return L + list(reversed(R)), spine
-
-def inside(p, polys):
-    x, y = p
-    for P in polys:
-        c = False
-        n = len(P)
-        j = n - 1
-        for i in range(n):
-            xi, yi = P[i]; xj, yj = P[j]
-            if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi:
-                c = not c
-            j = i
-        if c:
-            return True
-    return False
-
 def make_raven():
-    CX = 130.0
-    mirror = lambda pts: [(2 * CX - x, y) for x, y in pts]
-    seeds = [(CX, 48), (CX, 88)]   # head, heart
-    def delay(p):
-        return min(math.dist(p, q) for q in seeds)
+    """The raven traced by Tools/trace_raven.py: its silhouette, the line art's
+    strokes as the main glow lines, the shaded drawing's highlights as finer
+    ones, the branch it perches on and the ink splatter as grains. Placed so the bird stands over
+    the footswitches with the branch running out to the right."""
+    trace = json.loads((Path(__file__).resolve().parent / "art" / "raven_trace.json").read_text(encoding="utf-8"))
+    K = 0.31
+    OX, OY = 137 - 555 * K, 192 - 470 * K      # feet between the footswitches, above their LEDs
+    W = lambda p: (p[0] * K + OX, p[1] * K + OY)
+    # Light starts in the eye and the heart and runs out to every tip.
+    seeds = [W((644, 74)), W((560, 260))]
+    delay = lambda p: min(math.dist(p, q) for q in seeds)
 
-    # Wing sweep: rotate about the shoulder, more toward the tip.
-    SH = (122.0, 73.0)
-    def sweep(p):
-        dx, dy = p[0] - SH[0], p[1] - SH[1]
-        d = math.hypot(dx, dy)
-        th = math.radians(-(2 + 13 * min(1.0, d / 105) ** 1.6))
-        c, s_ = math.cos(th), math.sin(th)
-        return (SH[0] + c * dx - s_ * dy, SH[1] + s_ * dx + c * dy)
-    sw = lambda pts: [sweep(p) for p in pts]
-
-    half = [(CX, 37), (128.4, 41), (126.6, 46), (125.2, 52), (125.4, 58), (124.4, 64), (121.6, 72), (119.8, 84),
-            (120.2, 98), (122, 110), (124.2, 119), (121.2, 130), (117.6, 141), (115.4, 150), (120.4, 153.5), (125.8, 155.6)]
-    body = half + [(CX, 157)] + list(reversed(mirror(half)))[:-1]
-
-    bone0 = [(122, 73), (110, 67), (96, 62.5), (82, 59.5), (70, 58.5), (60, 59), (50, 60.5), (40, 62.5), (31, 65)]
-    def on_bone(t):
-        f = t * (len(bone0) - 1)
-        i = min(int(f), len(bone0) - 2)
-        return lerp(bone0[i], bone0[i + 1], f - i)
-    band0 = bone0 + [(q[0] - 4, q[1] + 15 - 6 * (122 - q[0]) / 91) for q in reversed(bone0)]
-    feathers0 = []
-    for j in range(12):
-        r = on_bone(j / 11 * 0.58)
-        feathers0.append(feather((r[0], r[1] + 4), 97 + j * 2.4, 35 + j * 0.3, 10, bend=4))
-    for j in range(8):
-        r = on_bone(0.6 + j / 7 * 0.4)
-        length = 37 + j * 2.0 if j < 6 else 47 - (j - 5) * 3
-        feathers0.append(feather((r[0] + 1, r[1] + 3), 116 + j * 8.6, length, 7.6 - j * 0.25, bend=-6))
-
-    bone = sw(bone0)
-    band = sw(band0)
-    feathers = [(sw(pl), sw(sp)) for pl, sp in feathers0]
-    wing_polys = [band] + [pl for pl, _ in feathers]
-    left_shapes = [body] + wing_polys
-    shapes = [body] + wing_polys + [mirror(p) for p in wing_polys]
-    fill = " ".join(smooth(p, closed=True, tension=0.35) for p in shapes)
-
-    # ---- organic glow lines: streamlines through a feather-direction field
-    spines = [sp for _, sp in feathers] + [list(reversed(bone))]
-    def wing_dir(p):
-        vx = vy = 0.0
-        for sp in spines:
-            best, bi = 1e9, 0
-            for i, q in enumerate(sp):
-                d = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2
-                if d < best:
-                    best, bi = d, i
-            a_, b_ = sp[max(0, bi - 1)], sp[min(len(sp) - 1, bi + 1)]
-            tx, ty = b_[0] - a_[0], b_[1] - a_[1]
-            l = math.hypot(tx, ty) or 1
-            w = 1.0 / (best + 4.0) ** 1.5
-            vx += tx / l * w; vy += ty / l * w
-        l = math.hypot(vx, vy) or 1
-        return vx / l, vy / l
-    def body_dir(p):
-        if p[1] > 118:   # tail fans out from its base
-            dx, dy = p[0] - CX, p[1] - 112
-            l = math.hypot(dx, dy) or 1
-            return dx / l, dy / l
-        return 0.0, 1.0
+    fill = " ".join(poly([W(p) for p in P]) for P in trace["silhouette"])
+    ground = " ".join(poly([W(p) for p in P]) for P in trace["branch"])
 
     strokes = []
-    def stream(start, max_len, field, region, ph):
-        pts = [start]
-        p = start
-        wander = 0.0
-        for k in range(int(max_len / 1.1)):
-            dx, dy = field(p)
-            wander += rng.gauss(0, 0.07)
-            wander *= 0.93
-            ang = math.atan2(dy, dx) + 0.38 * math.sin(p[0] * 0.09 + ph) * math.cos(p[1] * 0.08 - ph) + wander
-            q = (p[0] + math.cos(ang) * 1.1, p[1] + math.sin(ang) * 1.1)
-            if not inside(q, region):
-                break
-            pts.append(q)
-            p = q
-        return pts
+    def emit(P, w, d0=None):
+        if delay(P[-1]) < delay(P[0]):
+            P = P[::-1]
+        strokes.append({"d": smooth(P), "w": w, "delay": round(delay(P[0]) if d0 is None else d0, 1)})
+    for P in trace["lines"]:
+        P = [W(p) for p in P]
+        emit(P, round(min(0.8, 0.5 + plen(P) * 0.01), 2))
+    for P in trace["highlights"]:
+        emit([W(p) for p in P], 0.32)
+    # The branch lights after the bird, from under the feet outward.
+    feet = W((560, 470))
+    reach = max(delay(W(p)) for P in trace["lines"] + trace["highlights"] for p in (P[0], P[-1]))
+    for P in trace["branch_lines"]:
+        P = [W(p) for p in P]
+        if math.dist(P[-1], feet) < math.dist(P[0], feet):
+            P = P[::-1]
+        strokes.append({"d": smooth(P), "w": 0.5, "delay": round(reach * 0.6 + math.dist(P[0], feet), 1)})
 
-    def emit(pts, w):
-        if len(pts) < 6:
-            return
-        pts = pts[::2] + ([pts[-1]] if len(pts) % 2 == 0 else [])
-        for P in (pts, mirror(pts)):
-            strokes.append({"d": smooth(P), "w": w, "delay": round(delay(P[0]), 1)})
-
-    # Wing: many lines, mostly starting near the bone, flowing out along the feathers.
-    for i in range(24):
-        t = (i + rng.random()) / 24
-        q = sweep(on_bone(t))
-        start = (q[0] + rng.uniform(-1.5, 1.5), q[1] + rng.uniform(2, 6))
-        if not inside(start, wing_polys):
-            continue
-        emit(stream(start, rng.uniform(30, 70), wing_dir, wing_polys, rng.uniform(0, 6.3)),
-             round(rng.uniform(0.3, 0.6), 2))
-    # Light running out along the arm from the shoulder.
-    for _ in range(2):
-        pts = [(x + rng.gauss(0, 0.5), y + rng.uniform(-1.5, 3.5) + 1.2 * math.sin(x * 0.12 + rng.uniform(0, 6)))
-               for x, y in bone[1:]]
-        emit([sweep((123, 74))] + pts, round(rng.uniform(0.45, 0.85), 2))
-    # Body and tail.
-    for _ in range(7):
-        start = (CX + rng.uniform(-3.5, 3.5), rng.uniform(52, 100))
-        pts = stream(start, rng.uniform(20, 90), body_dir, [body], rng.uniform(0, 6.3))
-        if len(pts) >= 6:
-            pts = pts[::2]
-            strokes.append({"d": smooth(pts), "w": round(rng.uniform(0.35, 0.75), 2), "delay": round(delay(pts[0]), 1)})
-
-    # ---- spray off the wing tips, trailing edges and tail
-    edge = []
-    for _, sp in feathers[12:]:
-        edge += [sp[-1]] * 3
-    edge += [sp[-1] for _, sp in feathers[:12]][::2] + [(117, 151), (123, 155), (CX, 157), (CX, 157)]
-    edge += mirror(edge)
-    centre = (CX, 92)
-    grains = []
-    for _ in range(320):
-        e = rng.choice(edge)
-        ang = math.atan2(e[1] - centre[1], e[0] - centre[0]) + rng.gauss(0, 0.32)
-        r = rng.expovariate(1 / 17) + 2.0
+    # Grains: the ink splatter, plus a spray drifting off the tail tips.
+    grains = [[round(W((x, y))[0], 1), round(W((x, y))[1], 1), round(max(0.3, r * K * 1.6), 2), round(delay(W((x, y))), 1)]
+              for x, y, r in trace["dots"]]
+    tips = [(208, 462), (214, 452), (226, 444), (212, 372), (226, 384)]
+    for _ in range(140):
+        e = W(rng.choice(tips))
+        ang = math.radians(rng.gauss(165, 22))
+        r = rng.expovariate(1 / 7) + 1.0
         p = (e[0] + math.cos(ang) * r, e[1] + math.sin(ang) * r)
-        size = max(0.22, rng.choice([0.3, 0.45, 0.6, 0.8, 1.1, 1.6, 2.2]) * (1.25 - min(1, r / 55)))
+        size = max(0.2, rng.choice([0.25, 0.35, 0.5, 0.7, 0.9]) * (1.2 - min(1, r / 20)))
         grains.append([round(p[0], 1), round(p[1], 1), round(size, 2), round(delay(e) + r, 1)])
-    for _ in range(40):
-        e = rng.choice(edge)
-        ang = math.atan2(e[1] - centre[1], e[0] - centre[0]) + rng.gauss(0, 0.2)
-        r0 = rng.uniform(2, 10)
-        r1 = r0 + rng.uniform(5, 18)
-        mid_bend = rng.gauss(0, 0.12)
-        pts = [(e[0] + math.cos(ang + mid_bend * t) * (r0 + (r1 - r0) * t),
-                e[1] + math.sin(ang + mid_bend * t) * (r0 + (r1 - r0) * t)) for t in (0, 0.5, 1)]
-        strokes.append({"d": smooth(pts), "w": round(rng.uniform(0.3, 0.6), 2), "delay": round(delay(e) + r0, 1)})
 
-    return {"viewBox": "-40 22 340 170", "fill": fill, "ground": "", "strokes": strokes,
-            "aura": [CX, 96, 92], "motes": [], "grains": grains}
+    return {"viewBox": "0 30 260 240", "fill": fill, "ground": ground, "strokes": strokes,
+            "aura": list(W((520, 270))) + [100], "motes": [], "grains": grains}
 
 if __name__ == "__main__":
     data = json.dumps({"tree": make_tree(), "raven": make_raven()}, separators=(",", ":"))

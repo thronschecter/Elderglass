@@ -91,8 +91,8 @@ ElderglassAudioProcessorEditor::ElderglassAudioProcessorEditor(ElderglassAudioPr
     webView.goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
 
     setResizable(true, true);
-    setResizeLimits(820, 560, 1800, 1100);
-    setSize(1000, 610);
+    setResizeLimits(820, 700, 1800, 1300);
+    setSize(1000, 746);   // tall enough for the artwork below the pedal controls
 }
 
 void ElderglassAudioProcessorEditor::resized()

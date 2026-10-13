@@ -22,6 +22,14 @@ export function mountArt(panel, fig, mixState, { stages = false } = {}) {
     const layer = document.createElement("div");
     layer.className = "pedal__art";
     panel.prepend(layer);
+    // The figure fills the free space below the option buttons, so it never
+    // sits behind the knobs or buttons; it follows the layout on resize.
+    const options = panel.querySelector(".options");
+    if (options) {
+        const place = () => (layer.style.top = `${options.offsetTop + options.offsetHeight + 6}px`);
+        new ResizeObserver(place).observe(panel);
+        place();
+    }
     const svg = el("svg", { viewBox: fig.viewBox, preserveAspectRatio: "xMidYMid meet", "aria-hidden": "true" }, layer);
 
     const defs = el("defs", {}, svg);

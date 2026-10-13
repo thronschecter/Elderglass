@@ -319,6 +319,8 @@ select option { background: var(--bg-2); }
     position: absolute;
     left: 0;
     right: 0;
+    top: 38%;        /* art.js moves it below the option buttons */
+    bottom: 0;
     pointer-events: none;
     z-index: 0;
     --art-sil: rgba(8, 10, 12, 0.5);
@@ -327,8 +329,6 @@ select option { background: var(--bg-2); }
     --art-mist: #0b0d10;
 }
 .pedal__art svg { width: 100%; height: 100%; display: block; }
-.pedal--rev  .pedal__art { top: 38%; bottom: 0; }
-.pedal--gran .pedal__art { top: 64%; bottom: 1%; }
 
 .art__sil { fill: var(--art-sil); stroke: var(--art-edge); stroke-width: 0.35; }
 .art__rest path { fill: none; stroke: var(--art-rest); stroke-linecap: round; }
