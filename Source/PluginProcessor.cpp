@@ -48,6 +48,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ElderglassAudioProcessor::cr
         IDs::duck, "Duck Amount", juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 0.0f, percent));
     layout.add(std::make_unique<juce::AudioParameterFloat>(
         IDs::duckSens, "Duck Sensitivity", juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 50.0f, percent));
+    layout.add(std::make_unique<juce::AudioParameterBool>(
+        IDs::faceplate, "Matte Black Face Plates", false,
+        juce::AudioParameterBoolAttributes().withAutomatable(false)));
 
     addPedalParameters(layout, IDs::reversePrefix, "Reverse",
         { "I Rev Delay > Rev Reverb", "II Rev Delay > Oct Up Reverb", "III Rev Delay > Oct Down Reverb",

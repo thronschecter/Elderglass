@@ -1,4 +1,6 @@
 import { getSliderState, getToggleState, getComboBoxState, getNativeFunction } from "./juce/index.js";
+import { mountArt } from "./art.js";
+import ART from "./art-data.js";
 
 // Every processor parameter has a relay named after its parameter ID (see
 // PluginEditor.cpp), so the UI binds by ID: "<prefix><name>" per pedal.
@@ -7,6 +9,8 @@ const PEDALS = [
         prefix: "rev_",
         name: "Reverse",
         cssClass: "pedal--rev",
+        // Background figure (art-data.js); the tree glows in two stages.
+        art: { figure: "tree", stages: true },
         hints: [
             "Reverse delay into reverse reverb. X: how reversed the trails are (left least, right fully).",
             "Reverse delay into octave-up reverb. Regen: shimmer. X: reverb decay.",
@@ -61,6 +65,7 @@ const PEDALS = [
         prefix: "gran_",
         name: "Granular",
         cssClass: "pedal--gran",
+        art: { figure: "raven", stages: false },
         hints: [
             "Reverse delay into reverse grains. X: grain size (left long, right choppy). Time: delay and grain buffer.",
             "Forward delay into octave-up grains (double speed). X: grain size. Time: delay and grain buffer.",
@@ -322,6 +327,7 @@ function buildPedal(def) {
     panels[def.prefix] = panel;
 
     const p = (suffix) => def.prefix + suffix;
+    mountArt(panel, ART[def.art.figure], getSliderState(p("mix")), { stages: def.art.stages });
     const knobs = {};
 
     // Tempo sync: Time knob shows the division while synced.
@@ -471,11 +477,11 @@ function refreshRouting() {
     const swapped = swapState.getValue();
     routingButtons.forEach((b) => b.setAttribute("aria-pressed", String(parseInt(b.dataset.routing, 10) === routing)));
     swapButton.setAttribute("aria-pressed", String(swapped));
-    swapButton.disabled = routing !== 2;
-    // Series stereo only applies to the series routings; parallel is stereo
-    // by design (one pedal per side).
+    // Only the button that applies to the current routing is shown: Swap in
+    // parallel, Stereo in series (parallel is stereo by design, one pedal per side).
+    swapButton.hidden = routing !== 2;
     stereoButton.setAttribute("aria-pressed", String(stereoState.getValue()));
-    stereoButton.disabled = routing === 2;
+    stereoButton.hidden = routing === 2;
     stereoButton.textContent = stereoState.getValue() ? "Stereo" : "Mono";
 
     const granFirst = routing === 1 || (routing === 2 && swapped);
@@ -498,6 +504,18 @@ swapState.valueChangedEvent.addListener(refreshRouting);
 stereoButton.addEventListener("click", () => stereoState.setValue(!stereoState.getValue()));
 stereoState.valueChangedEvent.addListener(refreshRouting);
 refreshRouting();
+
+// Face plates: the pedals' own colours or matte black.
+const faceplateState = getToggleState("faceplate");
+const faceplateButton = document.getElementById("faceplateButton");
+const refreshFaceplate = () => {
+    const black = faceplateState.getValue();
+    document.body.classList.toggle("faceplate-black", black);
+    faceplateButton.setAttribute("aria-pressed", String(black));
+};
+faceplateButton.addEventListener("click", () => faceplateState.setValue(!faceplateState.getValue()));
+faceplateState.valueChangedEvent.addListener(refreshFaceplate);
+refreshFaceplate();
 
 const outputKnob = document.querySelector('[data-param="output"]');
 createKnob(outputKnob, "output");
@@ -526,9 +544,11 @@ attachTooltip(widthKnob, () => ({
     text: "Stereo width of the output (mid/side): 0 % mono, 100 % natural, 200 % extra wide. "
         + "With a mono guitar only the effect gets wider; the dry signal stays centred.",
 }));
+attachTooltip(faceplateButton, () => ({
+    title: "Matte black",
+    text: "Switches both pedals between their own colours and matte black face plates.",
+}));
 attachTooltip(stereoButton, () => ({
     title: "Stereo",
-    text: routingState.getChoiceIndex() === 2
-        ? "Parallel is always stereo: one pedal per side."
-        : "Mono: like the hardware. Stereo: the reverse pedal runs a left and a right engine, the granular pedal places its grains across the stereo field.",
+    text: "Mono: like the hardware. Stereo: the reverse pedal runs a left and a right engine, the granular pedal places its grains across the stereo field.",
 }));

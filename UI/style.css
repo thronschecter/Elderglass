@@ -310,3 +310,43 @@ select option { background: var(--bg-2); }
     font-size: 12px;
     line-height: 1.35;
 }
+
+/* ---------- pedal artwork ---------- */
+.pedal { overflow: hidden; }
+.pedal > :not(.pedal__art) { position: relative; z-index: 1; }
+
+.pedal__art {
+    position: absolute;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    z-index: 0;
+    --art-sil: rgba(8, 10, 12, 0.5);
+    --art-edge: rgba(236, 228, 207, 0.10);
+    --art-rest: rgba(236, 228, 207, 0.16);
+    --art-mist: #0b0d10;
+}
+.pedal__art svg { width: 100%; height: 100%; display: block; }
+.pedal--rev  .pedal__art { top: 38%; bottom: 0; }
+.pedal--gran .pedal__art { top: 64%; bottom: 1%; }
+
+.art__sil { fill: var(--art-sil); stroke: var(--art-edge); stroke-width: 0.35; }
+.art__rest path { fill: none; stroke: var(--art-rest); stroke-linecap: round; }
+.art__lit path  { fill: none; stroke: #f3dc9a; stroke-linecap: round; }
+.art__lit { filter: drop-shadow(0 0 1px rgba(255, 236, 180, 0.8)) drop-shadow(0 0 4px rgba(243, 210, 130, 0.45)); }
+.art__mist-stop { stop-color: var(--art-mist); }
+.art__core path { fill: none; stroke: #fffdf6; stroke-linecap: round; }
+.art__core { filter: drop-shadow(0 0 0.5px rgba(255, 255, 255, 0.9)) drop-shadow(0 0 2px rgba(255, 248, 225, 0.5)); }
+.art__mote { fill: #fff6d6; }
+.art__grain { fill: var(--art-rest); }
+.art__grain.is-lit { fill: #f3dc9a; filter: drop-shadow(0 0 1.5px rgba(243, 210, 130, 0.8)); }
+
+/* Matte black face plates (the "faceplate" parameter). */
+body.faceplate-black .pedal--rev,
+body.faceplate-black .pedal--gran { background: linear-gradient(170deg, #26272a -40%, #101113 70%); }
+body.faceplate-black .pedal__art {
+    --art-sil: rgba(0, 0, 0, 0.55);
+    --art-edge: rgba(236, 228, 207, 0.16);
+    --art-rest: rgba(236, 228, 207, 0.20);
+    --art-mist: #000;
+}
