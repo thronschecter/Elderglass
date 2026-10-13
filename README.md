@@ -89,3 +89,9 @@ custom scan folder in your DAW.
 - **Sync:** follows the DAW tempo with the chosen note value instead of the Time
   knob.
 - **Trails:** echoes fade out naturally after bypass.
+
+## License
+
+Elderglass is licensed under the GNU General Public License v3.0; see
+[LICENSE](LICENSE). It builds on JUCE (AGPLv3) and the Steinberg ASIO SDK (used
+under its GPLv3 option).
