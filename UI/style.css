@@ -350,3 +350,51 @@ body.faceplate-black .pedal__art {
     --art-rest: rgba(236, 228, 207, 0.20);
     --art-mist: #000;
 }
+
+/* ---------- MIDI learn ---------- */
+.midi-hint {
+    display: none;
+    max-width: 210px;
+    color: var(--ink-dim);
+    font-size: 11px;
+    line-height: 1.3;
+    text-align: right;
+}
+body.is-midi-learning .midi-hint { display: block; }
+
+[data-midi] { position: relative; }
+
+.midi-badge {
+    display: none;
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    z-index: 2;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--gold);
+    color: var(--bg);
+    font-size: 9.5px;
+    line-height: 15px;
+    white-space: nowrap;
+    pointer-events: none;
+}
+.program-wrap .midi-badge { top: -7px; right: 6px; }
+
+body.is-midi-learning [data-midi] {
+    cursor: pointer;
+    outline: 1px dashed rgba(216, 183, 101, 0.45);
+    outline-offset: 3px;
+    border-radius: 8px;
+}
+body.is-midi-learning [data-midi].is-midi-mapped { outline-style: solid; }
+body.is-midi-learning [data-midi].is-midi-mapped .midi-badge { display: block; }
+body.is-midi-learning [data-midi].is-midi-armed {
+    outline: 2px solid var(--gold);
+    animation: midi-armed 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes midi-armed {
+    from { outline-color: rgba(216, 183, 101, 0.25); }
+    to   { outline-color: var(--gold); }
+}

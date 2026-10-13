@@ -48,9 +48,9 @@ void addPedalParameters(juce::AudioProcessorValueTreeState::ParameterLayout& lay
     layout.add(std::move(group));
 }
 
-void PedalParameterSet::attach(juce::AudioProcessorValueTreeState& state, const juce::String& prefixIn)
+PedalParameterSet::PedalParameterSet(juce::AudioProcessorValueTreeState& state, const juce::String& prefixIn)
+    : prefix(prefixIn)
 {
-    prefix = prefixIn;
     auto raw = [&](const char* n) { return state.getRawParameterValue(prefix + n); };
 
     program  = raw(IDs::program);

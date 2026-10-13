@@ -46,6 +46,7 @@ Source/
   PluginProcessor.*        Routing, swap crossfade, latency, state
   PluginEditor.*           WebView editor; one relay per parameter, named by ID
   Parameters.*             Parameter layout (prefix rev_ / gran_), tap tempo
+  MidiLearn.*              MIDI CC control and MIDI learn
   DSP/
     PedalCore.h            Shared pedal shell: mix, bypass/trails, mod,
                            program fades, Dive/Rise clock
@@ -127,6 +128,27 @@ LTS rather than a rolling release like CachyOS).
 - **Sync:** follows the DAW tempo with the chosen note value instead of the Time
   knob.
 - **Trails:** echoes fade out naturally after bypass.
+
+## MIDI control
+
+Every knob and program selector on the pedals, both pedals' footswitches and
+the shared footswitch can be driven by MIDI CC:
+
+1. Click **MIDI Learn** (top right). Learnable controls get a dashed outline.
+2. Click a control (it blinks), then move a knob or press a switch on your
+   MIDI controller. The control shows its CC number.
+3. Right-click a control to clear its mapping. Click **MIDI Learn** again or
+   press Esc to finish.
+
+- A CC drives one control; learning it again moves it to the new control.
+- **Footswitches** want a momentary CC (127 on press, 0 on release). Bypass
+  toggles on every press. Tap: a short press taps the tempo, holding it longer
+  than 350 ms is Dive/Rise until you let go, just like clicking the footswitch.
+- **Time** while **Sync** is on picks the note value (1/16 … 1/1) instead.
+- The mappings are saved with the plugin state (the DAW session, or the
+  standalone app's settings).
+- In the standalone app, enable your controller under
+  *Options → Audio/MIDI Settings*. In a DAW, route a MIDI track to Elderglass.
 
 ## License
 

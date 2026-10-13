@@ -5,6 +5,7 @@
 #include "Parameters.h"
 #include "DSP/PedalCore.h"
 #include "DSP/Ducker.h"
+#include "MidiLearn.h"
 
 //==============================================================================
 // Elderglass: two pedals (reverse + granular) with three routings:
@@ -21,6 +22,7 @@
 // and turns down both pedals' wet signals while you play; dry is untouched.
 // Latency is constant across routings (2 x the pedal latency), so switching
 // routing never shifts the plugin in time.
+// MIDI input is only read for CC control and MIDI learn (see MidiLearn).
 //==============================================================================
 class ElderglassAudioProcessor final : public juce::AudioProcessor
 {
@@ -37,7 +39,7 @@ public:
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return JucePlugin_Name; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     double getTailLengthSeconds() const override { return 20.0; }
 
@@ -53,6 +55,8 @@ public:
     // Message thread: tap tempo for the pedal with this parameter prefix.
     void tap(const juce::String& pedalPrefix, double pressAgeMs);
 
+    MidiLearn& getMidiLearn() { return midiLearn; }
+
     juce::AudioProcessorValueTreeState parameters;
 
 private:
@@ -63,6 +67,8 @@ private:
     PedalCore reversePedal, granularPedal;
     PedalParameterSet reverseParams, granularParams;
     TapTempo reverseTap, granularTap;
+    // Declared after the parameter sets it points into.
+    MidiLearn midiLearn;
 
     std::atomic<float>* routingParam = nullptr;
     std::atomic<float>* swapParam    = nullptr;

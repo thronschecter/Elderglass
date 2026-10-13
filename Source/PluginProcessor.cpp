@@ -9,11 +9,12 @@ ElderglassAudioProcessor::ElderglassAudioProcessor()
                           .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "PARAMETERS", createParameterLayout()),
       reversePedal(std::make_unique<ReverseModel>()),
-      granularPedal(std::make_unique<GranularModel>())
+      granularPedal(std::make_unique<GranularModel>()),
+      reverseParams(parameters, IDs::reversePrefix),
+      granularParams(parameters, IDs::granularPrefix),
+      midiLearn(parameters, { &reverseParams, &granularParams },
+                [this](const juce::String& prefix, double pressAgeMs) { tap(prefix, pressAgeMs); })
 {
-    reverseParams.attach(parameters, IDs::reversePrefix);
-    granularParams.attach(parameters, IDs::granularPrefix);
-
     routingParam = parameters.getRawParameterValue(IDs::routing.getParamID());
     swapParam    = parameters.getRawParameterValue(IDs::swap.getParamID());
     outputParam  = parameters.getRawParameterValue(IDs::output.getParamID());
@@ -69,6 +70,7 @@ void ElderglassAudioProcessor::prepareToPlay(double sampleRate, int)
     granularPedal.setSettings(granularParams.read(0.0));
     reversePedal.prepare(sampleRate);
     granularPedal.prepare(sampleRate);
+    midiLearn.prepare(sampleRate);
 
     activeRouting = juce::roundToInt(routingParam->load());
     routingGain = 1.0f;
@@ -112,9 +114,12 @@ bool ElderglassAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts
     return false;
 }
 
-void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    midiLearn.handleMidi(midi);
+    midi.clear();
 
     double bpm = 0.0;
     if (auto* ph = getPlayHead())
@@ -258,6 +263,7 @@ void ElderglassAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     if (auto state = parameters.copyState(); state.isValid())
     {
+        state.appendChild(midiLearn.toValueTree(), nullptr);
         if (auto xml = state.createXml())
             copyXmlToBinary(*xml, destData);
     }
@@ -267,7 +273,13 @@ void ElderglassAudioProcessor::setStateInformation(const void* data, int sizeInB
 {
     if (auto xml = getXmlFromBinary(data, sizeInBytes))
         if (xml->hasTagName(parameters.state.getType()))
-            parameters.replaceState(juce::ValueTree::fromXml(*xml));
+        {
+            auto state = juce::ValueTree::fromXml(*xml);
+            const auto midi = state.getChildWithName(MidiLearn::stateType);
+            midiLearn.fromValueTree(midi);
+            state.removeChild(midi, nullptr);
+            parameters.replaceState(state);
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

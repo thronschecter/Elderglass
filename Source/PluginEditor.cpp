@@ -75,6 +75,25 @@ ElderglassAudioProcessorEditor::ElderglassAudioProcessorEditor(ElderglassAudioPr
                       if (! args.isEmpty())
                           processorRef.tap(args[0].toString(), args.size() > 1 ? static_cast<double>(args[1]) : 0.0);
                       completion(juce::var());
+                  })
+              .withNativeFunction("midiLearn",
+                  [this](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion)
+                  {
+                      // args: target, or "" to cancel.
+                      processorRef.getMidiLearn().learn(args.isEmpty() ? juce::String() : args[0].toString());
+                      completion(juce::var());
+                  })
+              .withNativeFunction("midiClear",
+                  [this](const juce::Array<juce::var>& args, juce::WebBrowserComponent::NativeFunctionCompletion completion)
+                  {
+                      if (! args.isEmpty())
+                          processorRef.getMidiLearn().clear(args[0].toString());
+                      completion(juce::var());
+                  })
+              .withNativeFunction("midiMap",
+                  [this](const juce::Array<juce::var>&, juce::WebBrowserComponent::NativeFunctionCompletion completion)
+                  {
+                      completion(processorRef.getMidiLearn().toVar());
                   });
 
           return relays.addTo(std::move(options));
@@ -90,12 +109,24 @@ ElderglassAudioProcessorEditor::ElderglassAudioProcessorEditor(ElderglassAudioPr
         comboAttachments.push_back(std::make_unique<juce::WebComboBoxParameterAttachment>(
             *relays.comboParams[i], *relays.combos[i], nullptr));
 
+    processorRef.getMidiLearn().onChange = [this]
+    {
+        webView.emitEventIfBrowserIsVisible("midiMap", processorRef.getMidiLearn().toVar());
+    };
+
     addAndMakeVisible(webView);
     webView.goToURL(juce::WebBrowserComponent::getResourceProviderRoot());
 
     setResizable(true, true);
     setResizeLimits(820, 700, 1800, 1300);
     setSize(1000, 746);   // tall enough for the artwork below the pedal controls
+}
+
+ElderglassAudioProcessorEditor::~ElderglassAudioProcessorEditor()
+{
+    // A closed editor stops listening; a pending learn ends with it.
+    processorRef.getMidiLearn().onChange = nullptr;
+    processorRef.getMidiLearn().learn({});
 }
 
 void ElderglassAudioProcessorEditor::resized()

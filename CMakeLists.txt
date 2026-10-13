@@ -65,7 +65,8 @@ juce_add_plugin(Elderglass
     PRODUCT_NAME                "Elderglass"
     BUNDLE_ID                   com.barkingnoisestudios.elderglass
     IS_SYNTH                    FALSE
-    NEEDS_MIDI_INPUT            FALSE
+    # MIDI CC control and MIDI learn (see Source/MidiLearn.h).
+    NEEDS_MIDI_INPUT            TRUE
     NEEDS_MIDI_OUTPUT           FALSE
     IS_MIDI_EFFECT              FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
@@ -113,6 +114,8 @@ target_sources(Elderglass PRIVATE
     Source/PluginEditor.h
     Source/Parameters.cpp
     Source/Parameters.h
+    Source/MidiLearn.cpp
+    Source/MidiLearn.h
     Source/DSP/DspUtils.h
     Source/DSP/ClockedResampler.h
     Source/DSP/DelayStage.h
