@@ -64,6 +64,8 @@ juce_add_plugin(Elderglass
     FORMATS                     VST3 Standalone
     PRODUCT_NAME                "Elderglass"
     BUNDLE_ID                   com.barkingnoisestudios.elderglass
+    # The tree on a sage tile, drawn by Tools/make_icon.py.
+    ICON_BIG                    Resources/icon.png
     IS_SYNTH                    FALSE
     # MIDI CC control and MIDI learn (see Source/MidiLearn.h).
     NEEDS_MIDI_INPUT            TRUE

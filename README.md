@@ -60,6 +60,7 @@ Source/
     PitchShifter.h         Two-head pitch shifter (octaves, intervals)
 Tests/DspTest.cpp          Offline DSP checks (stability, latency, transparency)
 UI/                        HTML/CSS/JS, embedded into the binary
+Resources/icon.png         App icon (drawn by Tools/make_icon.py)
 Docs/                      Research notes
 Builds/                    Latest Release build (updated by every Release build)
 ```
