@@ -25,7 +25,8 @@ routing.
 the reverse pedal or both (the toggle below it) as an endless pad and fades
 their live effect out; the dry signal plays on top. A short press latches, a
 long press freezes until you let go. The target can be changed while frozen.
-A frozen pedal frosts over and its artwork turns into an ice sculpture.
+A frozen pedal is glazed over: cracked glass grows in from its edges like
+crystals, and its artwork turns into a glass sculpture.
 
 Research notes are in [Docs/](Docs/).
 

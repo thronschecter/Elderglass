@@ -49,9 +49,9 @@ function mountIce(svg, fx, fig, n) {
     if (fig.ground) el("path", { d: fig.ground }, clip);
 
     const body = el("linearGradient", { id: `art-ice-body-${n}`, x1: "0", y1: "0", x2: "0.35", y2: "1" }, defs);
-    el("stop", { offset: "0", "stop-color": "#f2fbff", "stop-opacity": "0.55" }, body);
-    el("stop", { offset: "0.45", "stop-color": "#9fd4ee", "stop-opacity": "0.32" }, body);
-    el("stop", { offset: "1", "stop-color": "#3d7fa6", "stop-opacity": "0.42" }, body);
+    el("stop", { offset: "0", "stop-color": "#ffffff", "stop-opacity": "0.5" }, body);
+    el("stop", { offset: "0.45", "stop-color": "#d3e7f2", "stop-opacity": "0.24" }, body);
+    el("stop", { offset: "1", "stop-color": "#6d93ad", "stop-opacity": "0.36" }, body);
 
     const sheen = el("linearGradient", { id: `art-ice-sheen-${n}`, x1: "0", y1: "0", x2: "1", y2: "0" }, defs);
     el("stop", { offset: "0", "stop-color": "#ffffff", "stop-opacity": "0" }, sheen);
@@ -86,7 +86,7 @@ function mountIce(svg, fx, fig, n) {
         const light = rng();
         el("path", {
             d: `M${a[0].toFixed(1)} ${a[1].toFixed(1)} L${b[0].toFixed(1)} ${b[1].toFixed(1)} L${c[0].toFixed(1)} ${c[1].toFixed(1)} Z`,
-            fill: light > 0.55 ? "#ffffff" : "#5aa6cf",
+            fill: light > 0.55 ? "#ffffff" : "#8db4cc",
             "fill-opacity": (light > 0.55 ? 0.04 + 0.2 * (light - 0.55) : 0.03 + 0.12 * light).toFixed(3),
         }, facets);
     };

@@ -1,6 +1,6 @@
 import { getSliderState, getToggleState, getComboBoxState, getNativeFunction } from "./juce/index.js";
 import { mountArt } from "./art.js";
-import { mountFrost } from "./frost.js";
+import { mountGlass } from "./glass.js";
 import ART from "./art-data.js";
 
 // Every processor parameter has a relay named after its parameter ID (see
@@ -331,7 +331,7 @@ function buildPedal(def) {
     // MIDI learn targets (see MidiLearn.h): knobs are named by parameter ID.
     panel.querySelectorAll("[data-midi-suffix]").forEach((el) => (el.dataset.midi = p(el.dataset.midiSuffix)));
     mountArt(panel, ART[def.art.figure], getSliderState(p("mix")), { stages: def.art.stages });
-    mountFrost(panel);
+    mountGlass(panel);
     const knobs = {};
 
     // Tempo sync: Time knob shows the division while synced.

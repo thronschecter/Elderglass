@@ -104,7 +104,7 @@ juce_add_binary_data(ElderglassUIResources
         UI/main.js
         UI/art.js
         UI/art-data.js
-        UI/frost.js
+        UI/glass.js
         "${juce_js_dir}/index.js"
         "${juce_js_dir}/check_native_interop.js"
 )
