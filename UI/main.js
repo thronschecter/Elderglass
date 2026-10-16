@@ -1,6 +1,7 @@
 import { getSliderState, getToggleState, getComboBoxState, getNativeFunction } from "./juce/index.js";
 import { mountArt } from "./art.js";
 import { mountGlass } from "./glass.js";
+import { mountFrost } from "./frost.js";
 import ART from "./art-data.js";
 
 // Every processor parameter has a relay named after its parameter ID (see
@@ -331,7 +332,9 @@ function buildPedal(def) {
     // MIDI learn targets (see MidiLearn.h): knobs are named by parameter ID.
     panel.querySelectorAll("[data-midi-suffix]").forEach((el) => (el.dataset.midi = p(el.dataset.midiSuffix)));
     mountArt(panel, ART[def.art.figure], getSliderState(p("mix")), { stages: def.art.stages });
+    // Both looks for a frozen pedal; the body class shows one (see the snowflake).
     mountGlass(panel);
+    mountFrost(panel);
     const knobs = {};
 
     // Tempo sync: Time knob shows the division while synced.
@@ -591,6 +594,19 @@ const refreshFaceplate = () => {
     faceplateButton.setAttribute("aria-pressed", String(black));
 };
 faceplateButton.addEventListener("click", () => faceplateState.setValue(!faceplateState.getValue()));
+
+// Hidden snowflake (bottom right corner): a frozen pedal frosts over and
+// turns to ice instead of glazing over with cracked glass.
+const freezeLookState = getToggleState("freezeLook");
+const snowflake = document.getElementById("snowflake");
+const refreshFreezeLook = () => {
+    const frost = freezeLookState.getValue();
+    document.body.classList.toggle("look-frost", frost);
+    snowflake.setAttribute("aria-pressed", String(frost));
+};
+snowflake.addEventListener("click", () => freezeLookState.setValue(!freezeLookState.getValue()));
+freezeLookState.valueChangedEvent.addListener(refreshFreezeLook);
+refreshFreezeLook();
 faceplateState.valueChangedEvent.addListener(refreshFaceplate);
 refreshFaceplate();
 

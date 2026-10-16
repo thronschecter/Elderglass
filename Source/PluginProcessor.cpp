@@ -58,6 +58,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ElderglassAudioProcessor::cr
     layout.add(std::make_unique<juce::AudioParameterBool>(
         IDs::faceplate, "Matte Black Face Plates", false,
         juce::AudioParameterBoolAttributes().withAutomatable(false)));
+    layout.add(std::make_unique<juce::AudioParameterBool>(
+        IDs::freezeLook, "Freeze Look: Frost", false,
+        juce::AudioParameterBoolAttributes().withAutomatable(false)));
 
     addPedalParameters(layout, IDs::reversePrefix, "Reverse",
         { "I Rev Delay > Rev Reverb", "II Rev Delay > Oct Up Reverb", "III Rev Delay > Oct Down Reverb",

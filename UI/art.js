@@ -49,9 +49,9 @@ function mountIce(svg, fx, fig, n) {
     if (fig.ground) el("path", { d: fig.ground }, clip);
 
     const body = el("linearGradient", { id: `art-ice-body-${n}`, x1: "0", y1: "0", x2: "0.35", y2: "1" }, defs);
-    el("stop", { offset: "0", "stop-color": "#ffffff", "stop-opacity": "0.5" }, body);
-    el("stop", { offset: "0.45", "stop-color": "#d3e7f2", "stop-opacity": "0.24" }, body);
-    el("stop", { offset: "1", "stop-color": "#6d93ad", "stop-opacity": "0.36" }, body);
+    // Colours come from style.css (the glass and the frost look differ).
+    for (const [i, offset] of ["0", "0.45", "1"].entries())
+        el("stop", { offset, class: `art__ice-stop${i}` }, body);
 
     const sheen = el("linearGradient", { id: `art-ice-sheen-${n}`, x1: "0", y1: "0", x2: "1", y2: "0" }, defs);
     el("stop", { offset: "0", "stop-color": "#ffffff", "stop-opacity": "0" }, sheen);

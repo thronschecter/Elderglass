@@ -46,6 +46,9 @@ namespace IDs
     static const juce::ParameterID freezeTarget { "freezeTarget", 1 };
     // UI only (pedal colours vs. matte black): saved with the session, not automatable.
     static const juce::ParameterID faceplate { "faceplate", 1 };
+    // UI only, likewise: what a frozen pedal looks like (false = cracked
+    // glass, true = frost). Switched by the hidden snowflake.
+    static const juce::ParameterID freezeLook { "freezeLook", 1 };
 
     inline juce::ParameterID pedal(const juce::String& prefix, const char* name)
     {

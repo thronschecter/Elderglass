@@ -335,7 +335,7 @@ select option { background: var(--bg-2); }
 
 /* ---------- pedal artwork ---------- */
 .pedal { overflow: hidden; }
-.pedal > :not(.pedal__art):not(.pedal__glass) { position: relative; z-index: 1; }
+.pedal > :not(.pedal__art):not(.pedal__glass):not(.pedal__frost) { position: relative; z-index: 1; }
 
 .pedal__art {
     position: absolute;
@@ -512,7 +512,60 @@ body.is-midi-learning [data-midi].is-midi-armed {
     to   { transform: translateX(70%); }
 }
 
+/* ---------- freeze look "frost" (the hidden snowflake) ---------- */
+/* Only one look is shown; the other isn't drawn at all. */
+body:not(.look-frost) .pedal__frost,
+body.look-frost .pedal__glass { display: none; }
+body.look-frost .pedal.is-frozen { border-color: rgba(190, 230, 255, 0.55); }
+
+/* Frost cover: over the whole panel, never takes clicks, clear centre. */
+.pedal__frost {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    /* Own compositor layer: rasterised once, then only faded and composited,
+       so repaints underneath (LEDs, the art's sheen) never re-run the noise
+       filter or the crystals' glow. */
+    will-change: opacity;
+    background:
+        radial-gradient(ellipse 75% 70% at 50% 45%, transparent 55%, rgba(200, 232, 250, 0.16) 85%, rgba(225, 244, 255, 0.3) 100%),
+        rgba(160, 210, 240, 0.06);
+    box-shadow: inset 0 0 28px rgba(200, 236, 255, 0.35), inset 0 0 2px 1px rgba(230, 248, 255, 0.55);
+}
+.pedal__frost svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.frost__texture-layer { will-change: transform; }
+.frost__texture {
+    opacity: 0.4;
+    -webkit-mask-image: radial-gradient(ellipse 70% 65% at 50% 45%, transparent 45%, #000 100%);
+    mask-image: radial-gradient(ellipse 70% 65% at 50% 45%, transparent 45%, #000 100%);
+}
+.frost__crystals path {
+    fill: none;
+    stroke: rgba(232, 248, 255, 0.75);
+    stroke-linecap: round;
+    stroke-dasharray: 1 1;
+    stroke-dashoffset: 1;
+    transition: stroke-dashoffset 0.9s ease-out;
+}
+/* One glow for all crystals (a filter per path costs hundreds of passes). */
+.frost__crystals { filter: drop-shadow(0 0 1.5px rgba(170, 225, 255, 0.8)); }
+.pedal.is-frozen .pedal__frost { opacity: 1; }
+.pedal.is-frozen .frost__crystals path { stroke-dashoffset: 0; }
+/* Thawing: the crystals melt back all at once. */
+.pedal:not(.is-frozen) .frost__crystals path { transition-delay: 0s !important; transition-duration: 0.5s; }
+
 /* Glass sculpture: the artwork turns to carved glass. */
+/* Sculpture colours: clear glass by default, bluer ice with the frost look. */
+.art__ice-stop0 { stop-color: #ffffff; stop-opacity: 0.5; }
+.art__ice-stop1 { stop-color: #d3e7f2; stop-opacity: 0.24; }
+.art__ice-stop2 { stop-color: #6d93ad; stop-opacity: 0.36; }
+body.look-frost .art__ice-stop0 { stop-color: #f2fbff; stop-opacity: 0.55; }
+body.look-frost .art__ice-stop1 { stop-color: #9fd4ee; stop-opacity: 0.32; }
+body.look-frost .art__ice-stop2 { stop-color: #3d7fa6; stop-opacity: 0.42; }
 .art__ice { opacity: 0; transition: opacity 0.9s ease; }
 .art__warm { transition: opacity 0.9s ease; }
 .art__ice-edge { fill: none; stroke: rgba(235, 250, 255, 0.85); stroke-width: 0.6;
@@ -540,3 +593,22 @@ body.is-midi-learning [data-midi].is-midi-armed {
     0%, 70%, 100% { opacity: 0; }
     82%           { opacity: 1; }
 }
+
+/* Hidden snowflake: nearly invisible in the corner, wakes up on hover. */
+.snowflake {
+    position: fixed;
+    right: 7px;
+    bottom: 3px;
+    z-index: 5;
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 12px;
+    line-height: 1;
+    color: var(--ink-dim);
+    opacity: 0.16;
+    cursor: pointer;
+    transition: opacity 0.3s ease, color 0.3s ease, text-shadow 0.3s ease;
+}
+.snowflake:hover { opacity: 0.8; }
+.snowflake[aria-pressed="true"] { opacity: 0.55; color: #bfeaff; text-shadow: 0 0 6px rgba(150, 215, 255, 0.8); }
