@@ -236,6 +236,28 @@ select option { background: var(--bg-2); }
 .led.is-on { background: #f4f1e6; box-shadow: 0 0 10px 2px rgba(244, 241, 230, 0.7); }
 .led--tap.is-on.is-dive { background: #4fb6ff; box-shadow: 0 0 10px 2px rgba(79, 182, 255, 0.7); }
 .led--tap.is-on.is-rise { background: #58e08a; box-shadow: 0 0 10px 2px rgba(88, 224, 138, 0.7); }
+.led--freeze.is-on { background: #bfeaff; box-shadow: 0 0 10px 2px rgba(150, 215, 255, 0.8); }
+
+/* Freeze target: Rev / Both / Gran (outer buttons follow the panel order). */
+.freeze-target {
+    display: flex;
+    gap: 3px;
+}
+.freeze-target button {
+    flex: 1;
+    min-width: 0;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(236, 228, 207, 0.18);
+    border-radius: 7px;
+    padding: 4px 0;
+    font-size: 11px;
+    cursor: pointer;
+}
+.freeze-target button[aria-pressed="true"] {
+    border-color: #9fd8f5;
+    color: #cdeeff;
+    background: rgba(140, 205, 240, 0.14);
+}
 
 /* ---------- routing column ---------- */
 .routing {
@@ -243,7 +265,7 @@ select option { background: var(--bg-2); }
     flex-direction: column;
     align-items: stretch;
     justify-content: center;
-    gap: 12px;
+    gap: 9px;
     text-align: center;
 }
 
@@ -313,7 +335,7 @@ select option { background: var(--bg-2); }
 
 /* ---------- pedal artwork ---------- */
 .pedal { overflow: hidden; }
-.pedal > :not(.pedal__art) { position: relative; z-index: 1; }
+.pedal > :not(.pedal__art):not(.pedal__frost) { position: relative; z-index: 1; }
 
 .pedal__art {
     position: absolute;
@@ -329,6 +351,10 @@ select option { background: var(--bg-2); }
     --art-mist: #0b0d10;
 }
 .pedal__art svg { width: 100%; height: 100%; display: block; }
+/* The figure's SVG stack (see art.js): each layer above the base is its own
+   compositor layer, so the ice fade and the sheen never repaint the lines. */
+.pedal__art svg + svg { position: absolute; inset: 0; }
+.pedal__art .art__ice { will-change: opacity; }
 
 .art__sil { fill: var(--art-sil); stroke: var(--art-edge); stroke-width: 0.35; }
 .art__rest path { fill: none; stroke: var(--art-rest); stroke-linecap: round; }
@@ -397,4 +423,75 @@ body.is-midi-learning [data-midi].is-midi-armed {
 @keyframes midi-armed {
     from { outline-color: rgba(216, 183, 101, 0.25); }
     to   { outline-color: var(--gold); }
+}
+
+/* ---------- freeze ---------- */
+/* Frost cover: over the whole panel, never takes clicks, clear centre. */
+.pedal__frost {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    /* Own compositor layer: rasterised once, then only faded and composited,
+       so repaints underneath (LEDs, the art's sheen) never re-run the noise
+       filter or the crystals' glow. */
+    will-change: opacity;
+    background:
+        radial-gradient(ellipse 75% 70% at 50% 45%, transparent 55%, rgba(200, 232, 250, 0.16) 85%, rgba(225, 244, 255, 0.3) 100%),
+        rgba(160, 210, 240, 0.06);
+    box-shadow: inset 0 0 28px rgba(200, 236, 255, 0.35), inset 0 0 2px 1px rgba(230, 248, 255, 0.55);
+}
+.pedal__frost svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.frost__texture-layer { will-change: transform; }
+.frost__texture {
+    opacity: 0.4;
+    -webkit-mask-image: radial-gradient(ellipse 70% 65% at 50% 45%, transparent 45%, #000 100%);
+    mask-image: radial-gradient(ellipse 70% 65% at 50% 45%, transparent 45%, #000 100%);
+}
+.frost__crystals path {
+    fill: none;
+    stroke: rgba(232, 248, 255, 0.75);
+    stroke-linecap: round;
+    stroke-dasharray: 1 1;
+    stroke-dashoffset: 1;
+    transition: stroke-dashoffset 0.9s ease-out;
+}
+/* One glow for all crystals (a filter per path costs hundreds of passes). */
+.frost__crystals { filter: drop-shadow(0 0 1.5px rgba(170, 225, 255, 0.8)); }
+.pedal.is-frozen .pedal__frost { opacity: 1; }
+.pedal.is-frozen .frost__crystals path { stroke-dashoffset: 0; }
+/* Thawing: the crystals melt back all at once. */
+.pedal:not(.is-frozen) .frost__crystals path { transition-delay: 0s !important; transition-duration: 0.5s; }
+.pedal.is-frozen { border-color: rgba(190, 230, 255, 0.55); }
+
+/* Ice sculpture: the artwork turns to carved glass. */
+.art__ice { opacity: 0; transition: opacity 0.9s ease; }
+.art__warm { transition: opacity 0.9s ease; }
+.art__ice-edge { fill: none; stroke: rgba(235, 250, 255, 0.85); stroke-width: 0.6;
+                 filter: drop-shadow(0 0 1.5px rgba(160, 220, 255, 0.9)); }
+.art__sheen { animation: art-sheen 6s ease-in-out infinite; animation-play-state: paused; }
+.art__glints path { fill: #ffffff; opacity: 0; filter: drop-shadow(0 0 2px rgba(200, 240, 255, 0.9));
+                    animation: art-glint 4s ease-in-out infinite; animation-play-state: paused; }
+
+.pedal.is-frozen .art__ice { opacity: 1; }
+.pedal.is-frozen .art__warm { opacity: 0.15; }
+.pedal.is-frozen .art__sheen,
+.pedal.is-frozen .art__glints path { animation-play-state: running; }
+.pedal.is-frozen .art__sil { fill: rgba(20, 50, 75, 0.35); stroke: rgba(220, 245, 255, 0.4); }
+.pedal.is-frozen .art__lit path { stroke: #d6f1ff; }
+.pedal.is-frozen .art__lit { filter: drop-shadow(0 0 1px rgba(210, 240, 255, 0.85)) drop-shadow(0 0 4px rgba(130, 200, 245, 0.5)); }
+.pedal.is-frozen .art__core { filter: drop-shadow(0 0 0.5px rgba(255, 255, 255, 0.9)) drop-shadow(0 0 2px rgba(200, 238, 255, 0.6)); }
+.pedal.is-frozen .art__mote { fill: #e8f8ff; }
+.pedal.is-frozen .art__grain.is-lit { fill: #d6f1ff; filter: drop-shadow(0 0 1.5px rgba(150, 215, 255, 0.8)); }
+
+@keyframes art-sheen {
+    0%, 55% { transform: translateX(0); }
+    100%    { transform: translateX(160%); }
+}
+@keyframes art-glint {
+    0%, 70%, 100% { opacity: 0; }
+    82%           { opacity: 1; }
 }

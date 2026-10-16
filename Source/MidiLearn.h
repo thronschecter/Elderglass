@@ -17,6 +17,9 @@
 //   <prefix>tap      tap footswitch: press + release within HOLD_MS is a tap,
 //                    a longer press holds Dive/Rise until the release
 //   tapBoth          the shared footswitch: the same, on both pedals
+//   freeze           freeze footswitch: every press toggles freeze; a press
+//                    that froze and lasts past HOLD_MS unfreezes on release
+//   freezeTarget     the Granular / Both / Reverse freeze toggle
 // Footswitches expect a momentary controller (127 on press, 0 on release).
 //
 // The audio thread only queues the CCs; they are applied on the message
@@ -51,7 +54,7 @@ public:
     static inline const juce::Identifier stateType { "MIDI" };
 
 private:
-    enum class Kind { Parameter, Bypass, Tap, TapBoth };
+    enum class Kind { Parameter, Bypass, Tap, TapBoth, Freeze };
 
     struct Target
     {
@@ -63,7 +66,7 @@ private:
 
         int channel = 0, cc = -1;   // cc < 0: not mapped
 
-        // Footswitch state.
+        // Footswitch state. For Freeze, `holding` means this press froze.
         bool down = false, holding = false;
         double pressedAtMs = 0.0;
     };

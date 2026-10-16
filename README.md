@@ -21,6 +21,12 @@ The series routings can run in **Mono** (like the hardware) or **Stereo**:
 **Width** (mid/side, 0-200 %) sets the stereo width of the output in every
 routing.
 
+**Glass** (freeze; the footswitch below "tap · hold both") holds the granular pedal,
+the reverse pedal or both (the toggle below it) as an endless pad and fades
+their live effect out; the dry signal plays on top. A short press latches, a
+long press freezes until you let go. The target can be changed while frozen.
+A frozen pedal frosts over and its artwork turns into an ice sculpture.
+
 Research notes are in [Docs/](Docs/).
 
 ## Download / install
@@ -49,7 +55,8 @@ Source/
   MidiLearn.*              MIDI CC control and MIDI learn
   DSP/
     PedalCore.h            Shared pedal shell: mix, bypass/trails, mod,
-                           program fades, Dive/Rise clock
+                           program fades, Dive/Rise clock, freeze
+    FreezeStage.h          Freeze: holds the wet sound as a seamless pad
     ClockedResampler.h     Runs a pedal on its own clock (Dive/Rise)
     PedalModel.h           Model interface + analog feedback path
     DelayStage.h           Forward / reverse / analog delay "chip"

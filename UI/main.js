@@ -1,5 +1,6 @@
 import { getSliderState, getToggleState, getComboBoxState, getNativeFunction } from "./juce/index.js";
 import { mountArt } from "./art.js";
+import { mountFrost } from "./frost.js";
 import ART from "./art-data.js";
 
 // Every processor parameter has a relay named after its parameter ID (see
@@ -330,6 +331,7 @@ function buildPedal(def) {
     // MIDI learn targets (see MidiLearn.h): knobs are named by parameter ID.
     panel.querySelectorAll("[data-midi-suffix]").forEach((el) => (el.dataset.midi = p(el.dataset.midiSuffix)));
     mountArt(panel, ART[def.art.figure], getSliderState(p("mix")), { stages: def.art.stages });
+    mountFrost(panel);
     const knobs = {};
 
     // Tempo sync: Time knob shows the division while synced.
@@ -466,6 +468,67 @@ attachTooltip(masterTap, () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Freeze footswitch (labelled "glass", after the plugin): freezes on the press (so it catches that moment); a
+// short press latches, a press held past HOLD_MS is momentary and unfreezes
+// on release. Pressing it while frozen unfreezes. The toggle below picks the
+// pedals (FreezeTarget in Parameters.h: 0 Granular, 1 Both, 2 Reverse).
+// Both are plain parameters, so changing the target while frozen only
+// releases one pedal and/or freezes the other (each fades on its own).
+// ---------------------------------------------------------------------------
+const FREEZE_TARGET = { gran_: 0, both: 1, rev_: 2 };
+const freezeState = getToggleState("freeze");
+const freezeTargetState = getComboBoxState("freezeTarget");
+const freezeButton = document.getElementById("freezeButton");
+const freezeLed = document.getElementById("freezeLed");
+const freezeTargetButtons = [...document.querySelectorAll("#freezeTarget button")];
+{
+    let pressedAt = 0;
+    let froze = false;
+    freezeButton.addEventListener("pointerdown", (e) => {
+        freezeButton.setPointerCapture(e.pointerId);
+        freezeButton.classList.add("is-down");
+        pressedAt = performance.now();
+        froze = !freezeState.getValue();
+        freezeState.setValue(froze);
+    });
+    const release = () => {
+        if (!freezeButton.classList.contains("is-down")) return;
+        freezeButton.classList.remove("is-down");
+        if (froze && performance.now() - pressedAt >= HOLD_MS) freezeState.setValue(false);
+        froze = false;
+    };
+    freezeButton.addEventListener("pointerup", release);
+    freezeButton.addEventListener("pointercancel", release);
+}
+
+function refreshFreeze() {
+    const frozen = freezeState.getValue();
+    const target = freezeTargetState.getChoiceIndex();
+    freezeLed.classList.toggle("is-on", frozen);
+    freezeTargetButtons.forEach((b) =>
+        b.setAttribute("aria-pressed", String(parseInt(b.dataset.freezeTarget, 10) === target)));
+    for (const def of PEDALS) {
+        const applies = target === FREEZE_TARGET.both || target === FREEZE_TARGET[def.prefix];
+        panels[def.prefix].classList.toggle("is-frozen", frozen && applies);
+    }
+}
+
+freezeTargetButtons.forEach((b) =>
+    b.addEventListener("click", () => freezeTargetState.setChoiceIndex(parseInt(b.dataset.freezeTarget, 10))));
+freezeState.valueChangedEvent.addListener(refreshFreeze);
+freezeTargetState.valueChangedEvent.addListener(refreshFreeze);
+freezeTargetState.propertiesChangedEvent.addListener(refreshFreeze);
+attachTooltip(freezeButton, () => ({
+    title: "glass",
+    text: "Freezes the effect into glass: holds the sound of the chosen pedals as an endless pad and fades their live effect out; "
+        + "the dry signal plays on top. Short press: freeze on / off. Hold: freezes until you let go.",
+}));
+attachTooltip(document.getElementById("freezeTarget"), () => ({
+    title: "glass applies to",
+    text: "Which pedals the Glass footswitch freezes: one of them or both. Can be changed while frozen.",
+}));
+
+// ---------------------------------------------------------------------------
 // Routing: the panels are laid out in signal order. Series shows the first
 // pedal on the left; parallel shows the pedal in the left path on the left.
 // ---------------------------------------------------------------------------
@@ -493,6 +556,15 @@ function refreshRouting() {
     panels["rev_"].style.order = granFirst ? 3 : 1;
     panels["gran_"].style.order = granFirst ? 1 : 3;
     document.getElementById("routing").style.order = 2;
+
+    // Freeze toggle: the outer buttons name the pedals on that side.
+    const sides = granFirst ? ["gran_", "rev_"] : ["rev_", "gran_"];
+    freezeTargetButtons.filter((b) => b.dataset.freezeSide).forEach((b) => {
+        const prefix = sides[b.dataset.freezeSide === "left" ? 0 : 1];
+        b.dataset.freezeTarget = String(FREEZE_TARGET[prefix]);
+        b.textContent = prefix === "rev_" ? "Rev" : "Gran";
+    });
+    refreshFreeze();
 
     if (routing === 2) {
         flow.innerHTML = swapped ? "L ← Granular<br>Reverse → R" : "L ← Reverse<br>Granular → R";
@@ -633,6 +705,7 @@ midiMapNative().then(applyMidiState);
 attachTooltip(midiLearnButton, () => (learnMode ? null : {
     title: "MIDI Learn",
     text: "Map MIDI CCs to the pedals' knobs, program selectors and footswitches. "
-        + "Footswitches want momentary CCs (127 on press, 0 on release): a short press taps, a long press holds Dive/Rise. "
+        + "Footswitches want momentary CCs (127 on press, 0 on release): a short press taps, a long press holds Dive/Rise; "
+        + "on Glass a short press toggles, a long press freezes until the release. "
         + "While Sync is on, the Time CC picks the note value.",
 }));

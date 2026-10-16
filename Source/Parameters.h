@@ -40,6 +40,10 @@ namespace IDs
     static const juce::ParameterID output  { "output",  1 };
     static const juce::ParameterID duck     { "duck",     1 };
     static const juce::ParameterID duckSens { "duckSens", 1 };
+    // Freeze footswitch and which pedals it holds (FreezeTarget). Freeze is
+    // never restored from a saved session: the frozen sound isn't saved.
+    static const juce::ParameterID freeze       { "freeze",       1 };
+    static const juce::ParameterID freezeTarget { "freezeTarget", 1 };
     // UI only (pedal colours vs. matte black): saved with the session, not automatable.
     static const juce::ParameterID faceplate { "faceplate", 1 };
 
@@ -60,6 +64,9 @@ namespace Ranges
 }
 
 enum class Routing { ReverseIntoGranular = 0, GranularIntoReverse, Parallel };
+
+// Order of the "freezeTarget" choices (saved in sessions: never reorder).
+enum class FreezeTarget { Granular = 0, Both, Reverse };
 
 // Beat lengths for tempo sync, matching the "division" choice list.
 inline constexpr float divisionBeats[] = { 0.25f, 1.0f / 3.0f, 0.5f, 0.75f, 2.0f / 3.0f, 1.0f, 1.5f, 2.0f, 4.0f };

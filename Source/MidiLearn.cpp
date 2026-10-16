@@ -60,6 +60,17 @@ MidiLearn::MidiLearn(juce::AudioProcessorValueTreeState& stateIn, std::array<Ped
     both.kind = Kind::TapBoth;
     targets.push_back(both);
 
+    Target freeze;
+    freeze.id = "freeze";
+    freeze.kind = Kind::Freeze;
+    freeze.parameter = state.getParameter(IDs::freeze.getParamID());
+    targets.push_back(freeze);
+
+    Target freezeTarget;
+    freezeTarget.id = IDs::freezeTarget.getParamID();
+    freezeTarget.parameter = state.getParameter(freezeTarget.id);
+    targets.push_back(freezeTarget);
+
     startTimer(10);
 }
 
@@ -138,7 +149,8 @@ void MidiLearn::timerCallback()
     const double now = juce::Time::getMillisecondCounterHiRes();
     for (auto& t : targets)
     {
-        if (t.down && ! t.holding && now - t.pressedAtMs >= holdMs)
+        const bool isTap = t.kind == Kind::Tap || t.kind == Kind::TapBoth;
+        if (isTap && t.down && ! t.holding && now - t.pressedAtMs >= holdMs)
         {
             t.holding = true;
             setWarp(t, true);
@@ -177,6 +189,28 @@ void MidiLearn::apply(Target& t, const Event& e)
             if (isPress(e.value) && ! t.down)
                 setNormalised(t.parameter, t.parameter->getValue() > 0.5f ? 0.0f : 1.0f);
             t.down = isPress(e.value);
+            break;
+        }
+
+        case Kind::Freeze:
+        {
+            // Freezes on the press (so it catches that moment). A long press
+            // that froze is momentary: the release unfreezes.
+            if (isPress(e.value) && ! t.down)
+            {
+                const bool freeze = t.parameter->getValue() < 0.5f;
+                setNormalised(t.parameter, freeze ? 1.0f : 0.0f);
+                t.down = true;
+                t.holding = freeze;
+                t.pressedAtMs = e.timeMs;
+            }
+            else if (! isPress(e.value) && t.down)
+            {
+                t.down = false;
+                if (t.holding && e.timeMs - t.pressedAtMs >= holdMs)
+                    setNormalised(t.parameter, 0.0f);
+                t.holding = false;
+            }
             break;
         }
 
