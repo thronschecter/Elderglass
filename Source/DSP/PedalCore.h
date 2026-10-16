@@ -4,6 +4,7 @@
 
 #include "PedalModel.h"
 #include "ClockedResampler.h"
+#include "FreezeStage.h"
 
 //==============================================================================
 // Everything a pedal does around its algorithms, identical on both pedals:
@@ -17,6 +18,9 @@
 //     model's stereo output, with the Mod LFO 90 degrees apart on L/R.
 //   - Ducking: process() takes a per-sample gain for the wet signal only
 //     (see Ducker); the dry path is never touched.
+//   - Freeze: holds the wet sound as an endless pad and fades the live
+//     effect out (see FreezeStage). Program changes only fade the live part,
+//     so they never interrupt the pad.
 // Stereo in, stereo out, at host rate. Latency: ClockedResampler::latencySamples.
 //==============================================================================
 struct PedalSettings
@@ -26,6 +30,7 @@ struct PedalSettings
     bool  trails   = true;
     bool  warpHeld = false;
     bool  warpRise = false;
+    bool  frozen   = false;
     float feedback = 0.4f;
     float regen    = 0.3f;
     float mod      = 0.2f;
@@ -60,6 +65,7 @@ public:
         modBufferL.allocate(static_cast<int>(sampleRate * 0.05f));
         modBufferR.allocate(static_cast<int>(sampleRate * 0.05f));
         modLfo.prepare(sampleRate);
+        freeze.prepare(sampleRate, 0x5EED1CE5u);
 
         enabledRamp = 1.0f / (0.010f * sampleRate);
         programRamp = 1.0f / (0.015f * sampleRate);
@@ -73,6 +79,7 @@ public:
         modBufferL.clear();
         modBufferR.clear();
         modLfo.reset();
+        freeze.reset();
         for (auto& d : dryDelay)
             d = {};
         dryIndex = 0;
@@ -97,6 +104,7 @@ public:
     {
         settings = s;
         modLfo.setRate(s.modRate);
+        freeze.setFrozen(s.frozen);
     }
 
     StereoSample process(StereoSample in, float wetDuck = 1.0f) noexcept
@@ -129,11 +137,14 @@ public:
         const float targetLog = settings.warpHeld ? (settings.warpRise ? 0.6931472f : -0.6931472f) : 0.0f;
         const double clockRatio = std::exp(static_cast<double>(clockSmooth.process(targetLog)));
 
+        // The program fade acts on the live sound inside the engine (before
+        // the freeze), so a frozen pad plays on through a program change.
         const float inGain = enabledGain * programGain;
+        liveGain = programGain;
         const auto wet = resampler.process({ in.l * inGain, in.r * inGain }, clockRatio,
                                            [this](StereoSample x) { return tickEngine(x); });
 
-        const float wetGain = std::sin(0.5f * dsp::pi * mix) * programGain * wetDuck * (settings.trails ? 1.0f : enabledGain);
+        const float wetGain = std::sin(0.5f * dsp::pi * mix) * wetDuck * (settings.trails ? 1.0f : enabledGain);
         return { dry.l * dryGain + wet.l * wetGain, dry.r * dryGain + wet.r * wetGain };
     }
 
@@ -141,7 +152,12 @@ private:
     // Runs at the (variable) engine clock.
     StereoSample tickEngine(StereoSample in) noexcept
     {
-        const auto wet = model->tick(in);
+        // Freeze mutes the model's input and crossfades its output to the
+        // pad; on release the pad flows into the model, so its tail carries on.
+        const float freezeIn = freeze.inputGain();
+        const auto feed = freeze.padFeed();
+        const auto live = model->tick({ in.l * freezeIn + feed.l, in.r * freezeIn + feed.r });
+        const auto wet = freeze.process({ live.l * liveGain, live.r * liveGain });
 
         // Mod: short modulated delay = vibrato on the wet signal. In stereo
         // the right side's LFO runs 90 degrees ahead (quadrature), which
@@ -170,6 +186,7 @@ private:
                 resampler.reset();
                 modBufferL.clear();
                 modBufferR.clear();
+                freeze.reset();
                 engineIdle = false;
             }
             enabledGain = std::min(enabledTarget, enabledGain + enabledRamp);
@@ -192,8 +209,8 @@ private:
                 currentProgram = settings.program;
                 model->setProgram(currentProgram);
                 model->reset();
-                modBufferL.clear();
-                modBufferR.clear();
+                // The mod buffers only hold faded-out live sound here (or
+                // the pad, which must keep playing), so they are kept.
             }
         }
         else if (programGain < 1.0f)
@@ -213,6 +230,9 @@ private:
     dsp::Lfo modLfo;
     float modDepth = 0.0f;
     float stereoAmount = 0.0f;
+
+    FreezeStage freeze;
+    float liveGain = 1.0f; // program fade, applied to the live sound in the engine
 
     StereoSample dryDelay[latencySamples] {};
     int dryIndex = 0;

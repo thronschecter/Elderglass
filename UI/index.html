@@ -40,6 +40,17 @@
                 <button type="button" class="stomp" id="masterTap" aria-label="Tap both pedals, hold for Dive/Rise on both"></button>
                 <span class="footswitch__label">tap &middot; hold both</span>
             </div>
+            <div class="footswitch footswitch--master" data-midi="freeze">
+                <span class="led led--freeze" id="freezeLed"></span>
+                <button type="button" class="stomp" id="freezeButton" aria-label="Glass: freeze, hold for a momentary freeze"></button>
+                <span class="footswitch__label">glass</span>
+            </div>
+            <!-- The outer buttons follow the panel order (set in main.js). -->
+            <div class="freeze-target" id="freezeTarget" data-midi="freezeTarget" role="group" aria-label="Glass applies to">
+                <button type="button" data-freeze-side="left"></button>
+                <button type="button" data-freeze-target="1">Both</button>
+                <button type="button" data-freeze-side="right"></button>
+            </div>
         </section>
     </main>
 
@@ -85,6 +96,9 @@
             </div>
         </section>
     </template>
+
+    <!-- Hidden switch: frost instead of glass for a frozen pedal. -->
+    <button type="button" class="snowflake" id="snowflake" aria-label="Freeze look: frost">&#10052;</button>
 
     <script type="module" src="./main.js"></script>
 </body>

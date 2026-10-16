@@ -22,6 +22,8 @@ ElderglassAudioProcessor::ElderglassAudioProcessor()
     widthParam   = parameters.getRawParameterValue(IDs::width.getParamID());
     duckParam     = parameters.getRawParameterValue(IDs::duck.getParamID());
     duckSensParam = parameters.getRawParameterValue(IDs::duckSens.getParamID());
+    freezeParam       = parameters.getRawParameterValue(IDs::freeze.getParamID());
+    freezeTargetParam = parameters.getRawParameterValue(IDs::freezeTarget.getParamID());
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout ElderglassAudioProcessor::createParameterLayout()
@@ -49,8 +51,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout ElderglassAudioProcessor::cr
         IDs::duck, "Duck Amount", juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 0.0f, percent));
     layout.add(std::make_unique<juce::AudioParameterFloat>(
         IDs::duckSens, "Duck Sensitivity", juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f), 50.0f, percent));
+    layout.add(std::make_unique<juce::AudioParameterBool>(IDs::freeze, "Glass (Freeze)", false));
+    layout.add(std::make_unique<juce::AudioParameterChoice>(
+        IDs::freezeTarget, "Glass Target", juce::StringArray{ "Granular", "Both", "Reverse" },
+        static_cast<int>(FreezeTarget::Both)));
     layout.add(std::make_unique<juce::AudioParameterBool>(
         IDs::faceplate, "Matte Black Face Plates", false,
+        juce::AudioParameterBoolAttributes().withAutomatable(false)));
+    layout.add(std::make_unique<juce::AudioParameterBool>(
+        IDs::freezeLook, "Freeze Look: Frost", false,
         juce::AudioParameterBoolAttributes().withAutomatable(false)));
 
     addPedalParameters(layout, IDs::reversePrefix, "Reverse",
@@ -136,6 +145,12 @@ void ElderglassAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, ju
     auto reverseSettings = reverseParams.read(bpm);
     auto granularSettings = granularParams.read(bpm);
     reverseSettings.stereo = granularSettings.stereo = stereoTarget;
+    // Each pedal fades its own freeze in and out, so changing the target
+    // while frozen just releases one pedal and/or freezes the other.
+    const bool freeze = freezeParam->load() > 0.5f;
+    const auto freezeTarget = static_cast<FreezeTarget>(juce::roundToInt(freezeTargetParam->load()));
+    reverseSettings.frozen  = freeze && freezeTarget != FreezeTarget::Granular;
+    granularSettings.frozen = freeze && freezeTarget != FreezeTarget::Reverse;
     reversePedal.setSettings(reverseSettings);
     granularPedal.setSettings(granularSettings);
     width.setTargetValue(widthParam->load() * 0.01f);
@@ -278,6 +293,10 @@ void ElderglassAudioProcessor::setStateInformation(const void* data, int sizeInB
             const auto midi = state.getChildWithName(MidiLearn::stateType);
             midiLearn.fromValueTree(midi);
             state.removeChild(midi, nullptr);
+            // The frozen sound isn't part of the state: a session always loads unfrozen.
+            for (auto child : state)
+                if (child.getProperty("id").toString() == IDs::freeze.getParamID())
+                    child.setProperty("value", 0.0f, nullptr);
             parameters.replaceState(state);
         }
 }

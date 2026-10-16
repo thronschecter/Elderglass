@@ -258,6 +258,177 @@ namespace
         check(maxErr < 1.0e-5f, "bypass without trails: only dry after the fade");
     }
 
+    // Freeze: the pad must sustain after the input stops and the live
+    // effect has decayed, stay bounded, and release back to the live sound.
+    template <typename Model>
+    void testFreezeSustains(const char* name)
+    {
+        const auto in = makeInput(3);
+        for (int program = 0; program < 5; ++program)
+        {
+            PedalCore pedal(std::make_unique<Model>());
+            PedalSettings s;
+            s.program = program;
+            s.mix = 1.0f;
+            s.feedback = 0.3f;
+            s.regen = 0.2f;
+            pedal.setSettings(s);
+            pedal.prepare(sr);
+
+            bool finite = true;
+            float peak = 0.0f;
+            for (float x : in)
+                pedal.process({ x, x });
+
+            s.frozen = true;
+            pedal.setSettings(s);
+            double padEnergy = 0.0;
+            const int silence = static_cast<int>(sr * 8.0f);
+            for (int i = 0; i < silence; ++i)
+            {
+                const auto y = pedal.process({});
+                finite = finite && std::isfinite(y.l) && std::isfinite(y.r);
+                peak = std::max(peak, std::abs(y.l));
+                if (i > silence - static_cast<int>(sr * 2.0f))
+                    padEnergy += static_cast<double>(y.l) * y.l;
+            }
+            const double padRms = std::sqrt(padEnergy / (sr * 2.0));
+
+            // Release: no gap (no 50 ms window of the first second drops
+            // below -22 dB of the pad; a cut would), then a natural decay
+            // (quiet after 12 s).
+            s.frozen = false;
+            pedal.setSettings(s);
+            const int window = static_cast<int>(sr * 0.05f);
+            double windowEnergy = 0.0, minWindowRms = 1.0e9, tailEnergy = 0.0;
+            const int releaseSamples = static_cast<int>(sr * 14.0f);
+            for (int i = 0; i < releaseSamples; ++i)
+            {
+                const auto y = pedal.process({});
+                finite = finite && std::isfinite(y.l);
+                peak = std::max(peak, std::abs(y.l));
+                if (i < static_cast<int>(sr))
+                {
+                    windowEnergy += static_cast<double>(y.l) * y.l;
+                    if ((i + 1) % window == 0)
+                    {
+                        minWindowRms = std::min(minWindowRms, std::sqrt(windowEnergy / window));
+                        windowEnergy = 0.0;
+                    }
+                }
+                if (i > releaseSamples - static_cast<int>(sr * 2.0f))
+                    tailEnergy += static_cast<double>(y.l) * y.l;
+            }
+            const double tailRms = std::sqrt(tailEnergy / (sr * 2.0));
+
+            char msg[200];
+            std::snprintf(msg, sizeof msg, "%s P%d freeze: pad rms %.3f, peak %.2f, release: no gap (min %.3f), tail after 12 s %.5f",
+                          name, program + 1, padRms, peak, minWindowRms, tailRms);
+            check(finite && padRms > 0.01 && peak < 4.0f && minWindowRms > 0.08 * padRms && tailRms < 0.05 * padRms, msg);
+        }
+    }
+
+    // Mono pedal: frozen outputs stay identical; freezing an empty pedal
+    // (just prepared) is silent and safe.
+    void testFreezeMonoAndEmpty()
+    {
+        const auto in = makeInput(2);
+        PedalCore pedal(std::make_unique<GranularModel>());
+        PedalSettings s;
+        s.mix = 1.0f;
+        pedal.setSettings(s);
+        pedal.prepare(sr);
+        for (float x : in)
+            pedal.process({ x, x });
+        s.frozen = true;
+        pedal.setSettings(s);
+        float maxDiff = 0.0f;
+        for (int i = 0; i < static_cast<int>(sr * 2.0f); ++i)
+        {
+            const auto y = pedal.process({});
+            maxDiff = std::max(maxDiff, std::abs(y.l - y.r));
+        }
+        check(maxDiff == 0.0f, "freeze, stereo off: outputs identical");
+
+        PedalCore empty(std::make_unique<ReverseModel>());
+        empty.setSettings(s);
+        empty.prepare(sr);
+        bool finite = true;
+        float peak = 0.0f;
+        for (int i = 0; i < static_cast<int>(sr * 1.0f); ++i)
+        {
+            const auto y = empty.process({});
+            finite = finite && std::isfinite(y.l);
+            peak = std::max(peak, std::abs(y.l));
+        }
+        check(finite && peak < 1.0e-6f, "freeze right after prepare: silent and finite");
+    }
+
+    // Both pedals in series, like the processor. Freeze, the freeze target,
+    // programs, bypass, trails and stereo change at random block boundaries
+    // (also in the middle of every fade). Nothing may blow up or click.
+    void testFreezeToggleStress()
+    {
+        const auto in = makeInput(30);
+        auto run = [&](bool chaos, float& maxStep)
+        {
+            PedalCore reverse(std::make_unique<ReverseModel>());
+            PedalCore granular(std::make_unique<GranularModel>());
+            PedalSettings rs, gs;
+            rs.mix = gs.mix = 0.7f;
+            reverse.setSettings(rs);
+            granular.setSettings(gs);
+            reverse.prepare(sr);
+            granular.prepare(sr);
+
+            dsp::Random rng(7);
+            bool freeze = false, finite = true;
+            int target = 1; // 0 granular, 1 both, 2 reverse (FreezeTarget)
+            float last = 0.0f, peak = 0.0f;
+            maxStep = 0.0f;
+            size_t i = 0;
+            while (i < in.size())
+            {
+                const size_t block = 16 + rng.nextInt() % 500;
+                if (chaos)
+                {
+                    const float r = rng.nextFloat();
+                    if (r < 0.25f)      freeze = ! freeze;
+                    else if (r < 0.5f)  target = static_cast<int>(rng.nextInt() % 3);
+                    else if (r < 0.53f) rs.program = static_cast<int>(rng.nextInt() % 5);
+                    else if (r < 0.56f) gs.program = static_cast<int>(rng.nextInt() % 5);
+                    else if (r < 0.58f) rs.enabled = ! rs.enabled;
+                    else if (r < 0.60f) gs.trails = ! gs.trails;
+                    else if (r < 0.62f) rs.stereo = gs.stereo = rng.nextFloat() < 0.5f ? 0.0f : 1.0f;
+                }
+                rs.frozen = freeze && target != 0;
+                gs.frozen = freeze && target != 2;
+                reverse.setSettings(rs);
+                granular.setSettings(gs);
+
+                for (size_t n = 0; n < block && i < in.size(); ++n, ++i)
+                {
+                    const auto y = granular.process(reverse.process({ in[i], in[i] }));
+                    if (! std::isfinite(y.l) || ! std::isfinite(y.r))
+                        finite = false;
+                    peak = std::max(peak, std::abs(y.l));
+                    if (i > 0)
+                        maxStep = std::max(maxStep, std::abs(y.l - last));
+                    last = y.l;
+                }
+            }
+            return finite && peak < 4.0f;
+        };
+
+        float baselineStep = 0.0f, chaosStep = 0.0f;
+        const bool baselineOk = run(false, baselineStep);
+        const bool chaosOk = run(true, chaosStep);
+        char msg[160];
+        std::snprintf(msg, sizeof msg, "freeze/target toggled at random while frozen: finite, bounded, max step %.3f (steady %.3f)",
+                      chaosStep, baselineStep);
+        check(baselineOk && chaosOk && chaosStep < 1.5f * baselineStep + 0.05f, msg);
+    }
+
     void testDucker()
     {
         auto run = [](float level, float sensitivity, float amount, float seconds)
@@ -315,6 +486,10 @@ int main()
     testStereo<ReverseModel>("reverse ");
     testDiveRise();
     testDucker();
+    testFreezeSustains<GranularModel>("granular");
+    testFreezeSustains<ReverseModel>("reverse ");
+    testFreezeMonoAndEmpty();
+    testFreezeToggleStress();
 
     std::printf("\n%s (%d failure%s)\n", failures == 0 ? "ALL PASSED" : "FAILED", failures, failures == 1 ? "" : "s");
     return failures == 0 ? 0 : 1;

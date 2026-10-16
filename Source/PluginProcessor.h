@@ -20,6 +20,8 @@
 // effect.
 // Ducking (`duck` amount, `duckSens` sensitivity) follows the plugin input
 // and turns down both pedals' wet signals while you play; dry is untouched.
+// Freeze (`freeze`, `freezeTarget`) holds the granular, the reverse or both
+// pedals' wet sound as a pad (see FreezeStage).
 // Latency is constant across routings (2 x the pedal latency), so switching
 // routing never shifts the plugin in time.
 // MIDI input is only read for CC control and MIDI learn (see MidiLearn).
@@ -77,6 +79,8 @@ private:
     std::atomic<float>* widthParam   = nullptr;
     std::atomic<float>* duckParam     = nullptr;
     std::atomic<float>* duckSensParam = nullptr;
+    std::atomic<float>* freezeParam       = nullptr;
+    std::atomic<float>* freezeTargetParam = nullptr;
 
     // Routing changes: fade out, switch, fade in.
     int activeRouting = 0;
